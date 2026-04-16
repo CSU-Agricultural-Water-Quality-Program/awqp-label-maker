@@ -1,5 +1,10 @@
 # AWQP Label Generator
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://awqp-label-maker.streamlit.app)
+
+**Live App**  
+[https://awqp-label-maker.streamlit.app](https://awqp-label-maker.streamlit.app)
+
 **Author**  
 [A.J. Brown](https://sites.google.com/view/ansleyjbrown)  
 Agricultural Data Scientist  

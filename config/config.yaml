@@ -1,0 +1,270 @@
+locations:
+  A2: { id: "A2", label: "ARDEC 2200" }
+  ASC: { id: "ASC", label: "ARDEC South - Conv" }
+  ASO: { id: "ASO", label: "ARDEC South - Org" }
+  K: { id: "K", label: "Kerbel" }
+  UYM: { id: "UYM", label: "Upper Yampa" }
+  LG: { id: "LG", label: "Legacy" }
+  AV: { id: "AV", label: "AVRC Star" }
+  COW: { id: "COW", label: "AVRC Cowpea" }
+  BAR: { id: "BAR", label: "Barley" }
+  BT: { id: "BT", label: "Berthoud" }
+  HOL: { id: "HOL", label: "Big Hollow" }
+  BOL: { id: "BOL", label: "Boulder Lake" }
+  GU: { id: "GU", label: "Gunnison" }
+  MOL: { id: "MOL", label: "Molina" }
+  SC_ISCO: { id: "SC", label: "Stagecoach ISCO" }
+  FNT: { id: "FNT", label: "Fruita No Till" }
+  FW: { id: "FW", label: "Fruita W" }
+  FB: { id: "FB", label: "Fruita B" }
+  FF: { id: "FF", label: "Fruita Fertilizer" }
+  FC: { id: "FC", label: "Fruita Chicken" }
+  FA: { id: "FA", label: "Fruita Alfalfa" }
+  SC: { id: "SC", label: "Stagecoach" }
+  NHC: { id: "NHC", label: "North Hunt Creek" }
+  NSC: { id: "NSC", label: "North Sand Creek" }
+  JY: { id: "JY", label: "Jay Whaley Ranch" }
+  Y2: { id: "Y2", label: "Yampa 2" }
+  YJ: { id: "YJ", label: "Yellow Jacket" }
+  BK: { id: "BK", label: "LAB BLANK" }
+
+treatments:
+  blank: { id: "", label: "No treatment" }
+  ST1: { id: "ST1", label: "ST1" }
+  ST2: { id: "ST2", label: "ST2" }
+  CT1: { id: "CT1", label: "CT1" }
+  CT2: { id: "CT2", label: "CT2" }
+  MT1: { id: "MT1", label: "MT1" }
+  MT2: { id: "MT2", label: "MT2" }
+  RVA: { id: "RVA", label: "River A" }
+  RVB: { id: "RVB", label: "River B" }
+  RVMID: { id: "RVMID", label: "River Middle" }
+  PZE: { id: "PZE", label: "Piezometer East" }
+  PZW: { id: "PZW", label: "Piezometer West" }
+  PZN: { id: "PZN", label: "Piezometer North Yampa" }
+  PZS: { id: "PZS", label: "Piezometer South Yampa" }
+  TDR: { id: "TDR", label: "Tile Drainage River" }
+  TDL: { id: "TDL", label: "Tile Drainage Lake" }
+  CON: { id: "CON", label: "Confluence" }
+  UP: { id: "UP", label: "Upstream of Bridge" }
+  DOWN: { id: "DOWN", label: "Downstream of Bridge" }
+  MID: { id: "MID", label: "Middle at Bridge" }
+  ANF: { id: "ANF", label: "Arapahoe Natl. Forest" }
+  WC: { id: "WC", label: "Willow Creek" }
+  DP: { id: "DP", label: "Duck Pond" }
+  CUL: { id: "CUL", label: "Upper willow at @ culvert (swale)" }
+  FP: { id: "FP", label: "Fish Pond" }
+  FR2: { id: "FR2", label: "Fire 2" }
+  F1: { id: "F1", label: "Fruita F1" }
+  F2: { id: "F2", label: "Fruita F2" }
+  F3: { id: "F3", label: "Fruita F3" }
+  F4: { id: "F4", label: "Fruita F4" }
+  W1: { id: "W1", label: "W1" }
+  W2: { id: "W2", label: "W2" }
+  T1: { id: "T1", label: "AVRC Cowpea Treatment 1" }
+  T2: { id: "T2", label: "AVRC Cowpea Treatment 2" }
+  T3: { id: "T3", label: "AVRC Cowpea Treatment 3" }
+  T4: { id: "T4", label: "AVRC Cowpea Treatment 4" }
+  C1: { id: "C1", label: "Fruita C1" }
+  C2: { id: "C2", label: "Fruita C2" }
+  SCI: { id: "SCI", label: "Stage Coach In" }
+  SCA: { id: "SCA", label: "Stage Coach Above" }
+  SCO: { id: "SCO", label: "Stage Coach Dam Out" }
+  SC_TRT: { id: "SC", label: "Stagecoach ISCO" }
+  TR: { id: "TR", label: "The Ranch" }
+  MOR: { id: "MOR", label: "Morrison River" }
+  ROAD: { id: "ROAD", label: "NHC West (Peter's County Rd)" }
+  CULV: { id: "CULV", label: "NHC East (Ira Culvert)" }
+  BURN: { id: "BURN", label: "NHC Right after Burn Scar" }
+  ELVHUN: { id: "ELVHUN", label: "NHC Elvis Hunt Creek" }
+  ELVYAM: { id: "ELVYAM", label: "Elvis Yampa R. pre-confluence" }
+  ELVCON: { id: "ELVCON", label: "Elvis Yampa R. post-confluence" }
+  SEEP: { id: "SEEP", label: "Jay Whaley Seepage Face" }
+  KAR: { id: "KAR", label: "Karey Vilele Ranch Inflow" }
+  J: { id: "J", label: "NSC Site J" }
+  G: { id: "G", label: "NSC Site G" }
+  F: { id: "F", label: "NSC Site F" }
+
+event_types:
+  blank: { id: "", label: "Point / not applicable" }
+  IN: { id: "IN", label: "Inflow" }
+  OT: { id: "OT", label: "Outflow" }
+
+sample_methods:
+  ISC: { id: "ISC", label: "ISCO" }
+  LC: { id: "LC", label: "Low-Cost Sampler" }
+  GB: { id: "GB", label: "Grab Sample" }
+  GBH: { id: "GBH", label: "Hourly Grab" }
+
+duplicates:
+  blank: { id: "", label: "Not a field duplicate" }
+  D: { id: "D", label: "Field duplicate (D)" }
+  Z: { id: "Z", label: "Field duplicate (Z)" }
+
+event_numbers:
+  - "01"
+  - "02"
+  - "03"
+  - "04"
+  - "05"
+  - "06"
+  - "07"
+  - "08"
+  - "09"
+  - "S1"
+  - "S2"
+  - "S3"
+  - "S4"
+  - "S5"
+  - "S6"
+  - "S7"
+  - "S8"
+  - "S9"
+  - "SX"
+
+analytes:
+  "1":
+    id: "1"
+    label: "NO3+NO2 / OP / TDS"
+    analysis: "NO3+NO2/OP*/TDS"
+    analyses_code: "A,B,G"
+    preserved: "No"
+    volume_ml: 500
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: false
+    include_in_blank: true
+  "2":
+    id: "2"
+    label: "TKN / TP"
+    analysis: "TKN/TP"
+    analyses_code: "C,D"
+    preserved: "Sulfuric"
+    volume_ml: 250
+    comment: ""
+    label_suffix: "Sulfuric"
+    exclude_from_als: false
+    include_in_blank: true
+  "3":
+    id: "3"
+    label: "Selenium"
+    analysis: "Selenium"
+    analyses_code: "F"
+    preserved: "Nitric"
+    volume_ml: 125
+    comment: ""
+    label_suffix: "Nitric"
+    exclude_from_als: false
+    include_in_blank: false
+  "4":
+    id: "4"
+    label: "TSS"
+    analysis: "TSS"
+    analyses_code: "E"
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: true
+    include_in_blank: false
+  "6":
+    id: "6"
+    label: "E.coli"
+    analysis: "E.coli"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: false
+    include_in_blank: false
+  "7":
+    id: "7"
+    label: "Pest"
+    analysis: "Pest"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 250
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: false
+    include_in_blank: false
+  "8":
+    id: "8"
+    label: "Gama"
+    analysis: "Gama"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: false
+    include_in_blank: false
+  "9":
+    id: "9"
+    label: "Anion"
+    analysis: "Anion"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: false
+    include_in_blank: false
+  "10":
+    id: "10"
+    label: "Heavy Metals"
+    analysis: "Heavy Metal"
+    analyses_code: "H"
+    preserved: "Nitric"
+    volume_ml: 125
+    comment: "Arsenic, Se, Fe"
+    label_suffix: "Nitric"
+    exclude_from_als: false
+    include_in_blank: true
+  "11":
+    id: "11"
+    label: "TOC"
+    analysis: "TOC"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: false
+    include_in_blank: false
+  "12":
+    id: "12"
+    label: "Chlorophyll A"
+    analysis: "Chlorophyll A"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: false
+    include_in_blank: false
+  "13":
+    id: "13"
+    label: "pH"
+    analysis: "pH"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: true
+    include_in_blank: false
+  "14":
+    id: "14"
+    label: "Electrical Conductivity"
+    analysis: "Electrical Conductivity"
+    analyses_code: ""
+    preserved: "No"
+    volume_ml: 125
+    comment: ""
+    label_suffix: ""
+    exclude_from_als: true
+    include_in_blank: false
+
+default_analytes: ["1", "2", "4", "10"]

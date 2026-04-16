@@ -267,4 +267,4 @@ analytes:
     exclude_from_als: true
     include_in_blank: false
 
-default_analytes: ["1", "2", "4", "10"]
+default_analytes: ["1", "2", "4"]

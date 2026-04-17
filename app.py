@@ -15,6 +15,7 @@ from utils.label_builder import (
     empty_plan,
     remove_group_from_plan,
 )
+from utils.table_appender import append_uploaded_tables
 
 
 st.set_page_config(
@@ -91,7 +92,78 @@ def render_guide() -> None:
 
         **Lab blank**
         - Enable `Include lab blank rows` in the sidebar when you need the blank included in the export set.
+
+        **Season list builder**
+        - Use the `Season List Builder` page to upload older CSV or Excel exports.
+        - The app will recognize `Labels`, `Event`, and `For ALS Lab COC` tables, append matching rows, and let you download a fresh combined workbook or CSV ZIP.
         """
+    )
+
+
+def render_season_list_builder() -> None:
+    st.header("Season List Builder")
+    st.markdown(
+        """
+        Upload past AWQP exports and this page will append matching tables into a single combined season file.
+
+        Use this for:
+        - Season-long `Event` tracking sheets
+        - Combined `For ALS Lab COC` lists
+        - Rebuilding `Labels` exports when older batches need to be brought together
+
+        Supported uploads:
+        - CSV files exported from this app
+        - Excel workbooks (`.xlsx` or `.xlsm`) containing `Labels`, `Event`, or `For ALS Lab COC` sheets
+
+        Rows are appended in upload order. This page does not deduplicate anything automatically.
+        """
+    )
+
+    uploaded_files = st.file_uploader(
+        "Upload old exports",
+        type=["csv", "xlsx", "xlsm"],
+        accept_multiple_files=True,
+        help="You can mix CSV files and Excel workbooks. Matching tables will be appended together.",
+    )
+
+    if not uploaded_files:
+        st.info("Upload one or more exports to build a combined season workbook.")
+        return
+
+    combined_tables, table_sources, skipped_items = append_uploaded_tables(uploaded_files)
+
+    if skipped_items:
+        for item in skipped_items:
+            st.warning(item)
+
+    if not combined_tables:
+        st.error("No recognizable AWQP tables were found in the uploaded files.")
+        return
+
+    st.subheader("Combined Outputs")
+    for table_name, frame in combined_tables.items():
+        source_count = len(table_sources[table_name])
+        st.caption(
+            f"{table_name}: {len(frame)} row(s) appended from {source_count} uploaded table(s)."
+        )
+
+    tabs = st.tabs(list(combined_tables.keys()))
+    for tab, (name, frame) in zip(tabs, combined_tables.items()):
+        with tab:
+            st.dataframe(frame, use_container_width=True, hide_index=True)
+            st.caption("Sources: " + ", ".join(table_sources[name]))
+
+    st.download_button(
+        "Download combined Excel workbook",
+        data=workbook_bytes(combined_tables),
+        file_name="awqp_season_lists.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.download_button(
+        "Download combined ZIP of CSVs",
+        data=zip_exports(combined_tables),
+        file_name="awqp_season_lists_csv.zip",
+        mime="application/zip",
     )
 
 
@@ -118,23 +190,33 @@ with st.sidebar:
         "Ansley.Brown@colostate.edu"
     )
     st.divider()
-    page = st.radio("View", options=["Label Builder", "Guide"], label_visibility="collapsed")
-    st.divider()
-    st.header("Session Options")
-    collection_date = st.date_input("Collection date", value=date.today())
-    include_lab_blank = st.checkbox("Include lab blank rows", value=True)
-    blank_context = st.selectbox(
-        "Lab blank location context",
-        options=list(CONFIG["locations"].keys()),
-        format_func=lambda key: CONFIG["locations"][key]["label"],
-        help="Used to build blank IDs like BK-NHC-01-1.",
+    page = st.radio(
+        "View",
+        options=["Label Builder", "Season List Builder", "Guide"],
+        label_visibility="collapsed",
     )
     st.divider()
-    st.write("Current batch")
-    st.metric("Sample groups", len(st.session_state.sample_plan["groups"]))
+    collection_date = date.today()
+    include_lab_blank = True
+    blank_context = list(CONFIG["locations"].keys())[0]
+    if page == "Label Builder":
+        st.header("Session Options")
+        collection_date = st.date_input("Collection date", value=date.today())
+        include_lab_blank = st.checkbox("Include lab blank rows", value=True)
+        blank_context = st.selectbox(
+            "Lab blank location context",
+            options=list(CONFIG["locations"].keys()),
+            format_func=lambda key: CONFIG["locations"][key]["label"],
+            help="Used to build blank IDs like BK-NHC-01-1.",
+        )
+        st.divider()
+        st.write("Current batch")
+        st.metric("Sample groups", len(st.session_state.sample_plan["groups"]))
 
 if page == "Guide":
     render_guide()
+elif page == "Season List Builder":
+    render_season_list_builder()
 else:
     st.subheader("Add Sample Group")
 

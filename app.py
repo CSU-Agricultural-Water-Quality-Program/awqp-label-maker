@@ -73,7 +73,7 @@ def render_guide() -> None:
         2. Choose one or more treatments.
         3. Choose an event type, event number, and one or more sample methods.
         4. Choose the analytes to generate.
-        5. Add the sample group, review the outputs, and download the CSVs.
+        5. Add the sample group, review the outputs, and download either an Excel workbook or a CSV ZIP.
 
         **How row counts work**
         - Every selected treatment is combined with every selected sample method.
@@ -85,6 +85,7 @@ def render_guide() -> None:
         - `Event`: event-list rows for AWQP tracking.
         - `For ALS Lab COC`: same core rows, excluding in-house analytes such as TSS, pH, and EC.
         - Download: one Excel workbook with one sheet per output table, or a ZIP bundle of CSV files.
+        - Preview: review each output table in the app before downloading.
 
         **Comments**
         - Some analytes include a default comment, such as heavy metals.
@@ -92,6 +93,9 @@ def render_guide() -> None:
 
         **Lab blank**
         - Enable `Include lab blank rows` in the sidebar when you need the blank included in the export set.
+
+        **Navigation**
+        - Use the sidebar `Pages` selector to switch between the label builder, season list tools, and this guide.
 
         **Season list builder**
         - Use the `Season List Builder` page to upload older CSV or Excel exports.
@@ -169,6 +173,11 @@ def render_season_list_builder() -> None:
 
 if "sample_plan" not in st.session_state:
     st.session_state.sample_plan = empty_plan()
+if "page" not in st.session_state:
+    st.session_state.page = "Label Builder"
+if "page_redirect" in st.session_state:
+    st.session_state.page = st.session_state.page_redirect
+    del st.session_state["page_redirect"]
 
 
 st.title("AWQP Label Maker")
@@ -191,9 +200,9 @@ with st.sidebar:
     )
     st.divider()
     page = st.radio(
-        "View",
+        "Pages",
         options=["Label Builder", "Season List Builder", "Guide"],
-        label_visibility="collapsed",
+        key="page",
     )
     st.divider()
     collection_date = date.today()
@@ -218,7 +227,11 @@ if page == "Guide":
 elif page == "Season List Builder":
     render_season_list_builder()
 else:
-    st.subheader("Add Sample Group")
+    header_cols = st.columns([6, 1])
+    header_cols[0].subheader("Add Sample Group")
+    if header_cols[1].button("Guide"):
+        st.session_state.page_redirect = "Guide"
+        st.rerun()
 
     with st.form("add_group_form", clear_on_submit=False):
         c1, c2, c3 = st.columns(3)

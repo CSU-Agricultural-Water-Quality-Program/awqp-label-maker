@@ -95,7 +95,7 @@ All domain-specific definitions are stored in `config/config.yaml`, including:
 
 This design allows easy updates without modifying application code while keeping the user-facing interface readable and consistent.
 
-The app also includes an `Admin` page for adding locations and treatments from the UI. That page is protected by a single shared password supplied through Streamlit secrets or the `AWQP_ADMIN_PASSWORD` environment variable.
+The app also includes an `Admin` page for adding locations and treatments from the UI. That page is protected by a single shared password supplied through Streamlit secrets using either `admin_password` or `AWQP_ADMIN_PASSWORD`, or through the `AWQP_ADMIN_PASSWORD` environment variable.
 
 ---
 
@@ -135,11 +135,17 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-To enable the admin page locally, create `.streamlit/secrets.toml` with:
+To enable the admin page locally, create `.streamlit/secrets.toml` with either of these forms:
 
 ```toml
 admin_password = "your-shared-password"
 ```
+
+```toml
+AWQP_ADMIN_PASSWORD = "your-shared-password"
+```
+
+For Streamlit Community Cloud, add the same TOML content in your app's `Settings` -> `Secrets` panel.
 
 ---
 

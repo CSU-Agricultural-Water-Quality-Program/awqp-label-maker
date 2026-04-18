@@ -4,6 +4,7 @@ import hmac
 import io
 import os
 import zipfile
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 
@@ -72,15 +73,39 @@ def workbook_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
     return buffer.getvalue()
 
 
-def get_admin_password() -> str:
-    for secret_key in ("admin_password", "awqp_admin_password"):
-        try:
-            secret_value = st.secrets.get(secret_key, "")
-        except Exception:
-            secret_value = ""
-        if secret_value:
+def get_secret_value(secret_names: tuple[str, ...], source: Mapping[str, object]) -> str:
+    for secret_name in secret_names:
+        secret_value = source.get(secret_name, "")
+        if isinstance(secret_value, str) and secret_value:
+            return secret_value
+        if secret_value and not isinstance(secret_value, Mapping):
             return str(secret_value)
-    return os.getenv("AWQP_ADMIN_PASSWORD", "")
+
+    # Allow secrets to be grouped under TOML sections on hosted deployments.
+    for nested_value in source.values():
+        if isinstance(nested_value, Mapping):
+            secret_value = get_secret_value(secret_names, nested_value)
+            if secret_value:
+                return secret_value
+
+    return ""
+
+
+def get_admin_password() -> str:
+    secret_names = ("admin_password", "awqp_admin_password", "AWQP_ADMIN_PASSWORD")
+
+    try:
+        secret_value = get_secret_value(secret_names, st.secrets)
+    except Exception:
+        secret_value = ""
+    if secret_value:
+        return secret_value
+
+    for env_name in ("AWQP_ADMIN_PASSWORD", "admin_password", "awqp_admin_password"):
+        env_value = os.getenv(env_name, "")
+        if env_value:
+            return env_value
+    return ""
 
 
 def render_catalog_table(title: str, entries: dict[str, dict]) -> None:
@@ -106,7 +131,8 @@ def render_admin_page(config: dict, config_path: Path) -> None:
     admin_password = get_admin_password()
     if not admin_password:
         st.error(
-            "Admin editing is disabled. Set `admin_password` in Streamlit secrets or "
+            "Admin editing is disabled. Set `admin_password` or `AWQP_ADMIN_PASSWORD` in "
+            "Streamlit secrets, or set "
             "`AWQP_ADMIN_PASSWORD` in the environment."
         )
         return

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hmac
 import io
+import os
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -8,7 +10,15 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from utils.config_loader import load_config
+from utils.config_loader import (
+    append_catalog_entry,
+    find_cross_section_conflicts,
+    load_config,
+    next_available_key,
+    normalize_key_fragment,
+    save_config,
+    validate_catalog_entry,
+)
 from utils.label_builder import (
     add_group_to_plan,
     build_output_tables,
@@ -62,6 +72,169 @@ def workbook_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
     return buffer.getvalue()
 
 
+def get_admin_password() -> str:
+    for secret_key in ("admin_password", "awqp_admin_password"):
+        try:
+            secret_value = st.secrets.get(secret_key, "")
+        except Exception:
+            secret_value = ""
+        if secret_value:
+            return str(secret_value)
+    return os.getenv("AWQP_ADMIN_PASSWORD", "")
+
+
+def render_catalog_table(title: str, entries: dict[str, dict]) -> None:
+    rows = [
+        {"Key": key, "ID": value["id"], "Label": value["label"]}
+        for key, value in entries.items()
+    ]
+    st.subheader(title)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def render_admin_page(config: dict, config_path: Path) -> None:
+    st.header("Admin")
+    st.markdown(
+        """
+        Use this page to add canonical locations and treatments to the app.
+
+        Treatments are global and reusable across locations. If multiple sites use `CT1`,
+        keep one `CT1` treatment in the catalog and reuse it instead of creating duplicates.
+        """
+    )
+
+    admin_password = get_admin_password()
+    if not admin_password:
+        st.error(
+            "Admin editing is disabled. Set `admin_password` in Streamlit secrets or "
+            "`AWQP_ADMIN_PASSWORD` in the environment."
+        )
+        return
+
+    legacy_conflicts = find_cross_section_conflicts(config)
+    if legacy_conflicts:
+        st.warning(
+            "Legacy location/treatment overlaps already exist in the catalog. New entries "
+            "are blocked from creating additional overlaps."
+        )
+        for conflict in legacy_conflicts:
+            st.caption(conflict)
+
+    if not st.session_state.get("admin_authenticated", False):
+        with st.form("admin_login_form"):
+            shared_password = st.text_input("Shared admin password", type="password")
+            unlock = st.form_submit_button("Unlock admin tools", type="primary")
+
+        if unlock:
+            if hmac.compare_digest(shared_password, admin_password):
+                st.session_state.admin_authenticated = True
+                st.rerun()
+            st.error("Incorrect password.")
+        return
+
+    auth_cols = st.columns([5, 1])
+    auth_cols[0].success("Admin tools unlocked for this browser session.")
+    if auth_cols[1].button("Log out"):
+        st.session_state.admin_authenticated = False
+        st.rerun()
+
+    add_location_tab, add_treatment_tab, current_catalog_tab = st.tabs(
+        ["Add Location", "Add Treatment", "Current Catalog"]
+    )
+
+    with add_location_tab:
+        with st.form("add_location_form"):
+            location_id = st.text_input(
+                "Location ID code",
+                help="Used in sample IDs. Letters, numbers, and underscores only.",
+            )
+            location_label = st.text_input(
+                "Location label",
+                help="Shown to users in the app.",
+            )
+
+            if location_id.strip():
+                suggested_key = next_available_key(
+                    config["locations"],
+                    normalize_key_fragment(location_id),
+                )
+                st.caption(f"Internal key preview: `{suggested_key}`")
+
+            add_location = st.form_submit_button("Add location", type="primary")
+
+        if add_location:
+            errors = validate_catalog_entry(
+                config,
+                section_name="locations",
+                entry_id=location_id,
+                label=location_label,
+            )
+            if errors:
+                for error in errors:
+                    st.error(error)
+            else:
+                entry_key = append_catalog_entry(
+                    config,
+                    section_name="locations",
+                    entry_id=location_id,
+                    label=location_label,
+                )
+                save_config(config_path, config)
+                st.session_state.page = "Admin"
+                st.success(f"Location `{location_label.strip()}` added as `{entry_key}`.")
+                st.rerun()
+
+    with add_treatment_tab:
+        st.info(
+            "Add a treatment only when it is a new canonical option. If another location uses "
+            "an existing treatment like `CT1`, reuse the existing treatment instead."
+        )
+        with st.form("add_treatment_form"):
+            treatment_id = st.text_input(
+                "Treatment ID code",
+                help="Used in sample IDs. Letters, numbers, and underscores only.",
+            )
+            treatment_label = st.text_input(
+                "Treatment label",
+                help="Shown to users in the app.",
+            )
+
+            if treatment_label.strip():
+                suggested_key = next_available_key(
+                    config["treatments"],
+                    normalize_key_fragment(treatment_label),
+                )
+                st.caption(f"Internal key preview: `{suggested_key}`")
+
+            add_treatment = st.form_submit_button("Add treatment", type="primary")
+
+        if add_treatment:
+            errors = validate_catalog_entry(
+                config,
+                section_name="treatments",
+                entry_id=treatment_id,
+                label=treatment_label,
+            )
+            if errors:
+                for error in errors:
+                    st.error(error)
+            else:
+                entry_key = append_catalog_entry(
+                    config,
+                    section_name="treatments",
+                    entry_id=treatment_id,
+                    label=treatment_label,
+                )
+                save_config(config_path, config)
+                st.session_state.page = "Admin"
+                st.success(f"Treatment `{treatment_label.strip()}` added as `{entry_key}`.")
+                st.rerun()
+
+    with current_catalog_tab:
+        render_catalog_table("Locations", config["locations"])
+        render_catalog_table("Treatments", config["treatments"])
+
+
 def render_guide() -> None:
     st.header("Guide")
     st.markdown(
@@ -95,11 +268,15 @@ def render_guide() -> None:
         - Enable `Include lab blank rows` in the sidebar when you need the blank included in the export set.
 
         **Navigation**
-        - Use the sidebar `Pages` selector to switch between the label builder, season list tools, and this guide.
+        - Use the sidebar `Pages` selector to switch between the label builder, season list tools, the admin page, and this guide.
 
         **Season list builder**
         - Use the `Season List Builder` page to upload older CSV or Excel exports.
         - The app will recognize `Labels`, `Event`, and `For ALS Lab COC` tables, append matching rows, and let you download a fresh combined workbook or CSV ZIP.
+
+        **Admin**
+        - Use the `Admin` page to add canonical locations and treatments.
+        - The admin page is protected by a shared password set in Streamlit secrets or the app environment.
         """
     )
 
@@ -178,6 +355,8 @@ if "page" not in st.session_state:
 if "page_redirect" in st.session_state:
     st.session_state.page = st.session_state.page_redirect
     del st.session_state["page_redirect"]
+if "admin_authenticated" not in st.session_state:
+    st.session_state.admin_authenticated = False
 
 
 st.title("AWQP Label Maker")
@@ -201,7 +380,7 @@ with st.sidebar:
     st.divider()
     page = st.radio(
         "Pages",
-        options=["Label Builder", "Season List Builder", "Guide"],
+        options=["Label Builder", "Season List Builder", "Admin", "Guide"],
         key="page",
     )
     st.divider()
@@ -226,6 +405,8 @@ if page == "Guide":
     render_guide()
 elif page == "Season List Builder":
     render_season_list_builder()
+elif page == "Admin":
+    render_admin_page(CONFIG, CONFIG_PATH)
 else:
     header_cols = st.columns([6, 1])
     header_cols[0].subheader("Add Sample Group")

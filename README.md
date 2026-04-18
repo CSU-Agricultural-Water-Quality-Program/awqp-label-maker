@@ -44,6 +44,7 @@ This tool is intended to:
 - Optional fields handled cleanly without breaking label format
 - Batch-oriented workflow so one user can build many sample groups in a single session
 - Built-in guide view for new users
+- Password-protected admin page for adding locations and treatments
 - Human-readable frontend with hidden backend ID translation
 
 ---
@@ -94,6 +95,8 @@ All domain-specific definitions are stored in `config/config.yaml`, including:
 
 This design allows easy updates without modifying application code while keeping the user-facing interface readable and consistent.
 
+The app also includes an `Admin` page for adding locations and treatments from the UI. That page is protected by a single shared password supplied through Streamlit secrets or the `AWQP_ADMIN_PASSWORD` environment variable.
+
 ---
 
 ## Getting Started
@@ -130,6 +133,12 @@ pip install -r requirements.txt
 
 ```
 streamlit run app.py
+```
+
+To enable the admin page locally, create `.streamlit/secrets.toml` with:
+
+```toml
+admin_password = "your-shared-password"
 ```
 
 ---

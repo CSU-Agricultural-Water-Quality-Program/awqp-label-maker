@@ -44,7 +44,7 @@ This tool is intended to:
 - Optional fields handled cleanly without breaking label format
 - Batch-oriented workflow so one user can build many sample groups in a single session
 - Built-in guide view for new users
-- Password-protected admin page for adding locations and treatments
+- Password-protected admin page for adding, correcting, and retiring locations and treatments
 - Human-readable frontend with hidden backend ID translation
 
 ---
@@ -95,7 +95,7 @@ All domain-specific definitions are stored in `config/config.yaml`, including:
 
 This design allows easy updates without modifying application code while keeping the user-facing interface readable and consistent.
 
-The app also includes an `Admin` page for adding locations and treatments from the UI. That page is protected by a single shared password supplied through Streamlit secrets using either `admin_password` or `AWQP_ADMIN_PASSWORD`, or through the `AWQP_ADMIN_PASSWORD` environment variable.
+The app also includes an `Admin` page for adding locations, adding treatments, correcting typos, and marking old entries inactive from the UI. Inactive entries are hidden from standard user dropdowns but remain visible to admins. The page is protected by a single shared password supplied through Streamlit secrets using either `admin_password` or `AWQP_ADMIN_PASSWORD`, or through the `AWQP_ADMIN_PASSWORD` environment variable.
 
 ---
 
@@ -146,6 +146,8 @@ AWQP_ADMIN_PASSWORD = "your-shared-password"
 ```
 
 For Streamlit Community Cloud, add the same TOML content in your app's `Settings` -> `Secrets` panel.
+
+This is only required for maintainers who want the `Admin` page enabled. Regular users generating labels do not need any secrets configured.
 
 ---
 

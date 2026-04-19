@@ -16,6 +16,10 @@ def save_config(path: str | Path, config: dict) -> None:
         yaml.safe_dump(config, handle, sort_keys=False, allow_unicode=False)
 
 
+def is_catalog_entry_active(entry: dict) -> bool:
+    return entry.get("active", True)
+
+
 def normalize_value(value: str) -> str:
     return " ".join(value.strip().casefold().split())
 
@@ -77,6 +81,7 @@ def validate_catalog_entry(
     section_name: str,
     entry_id: str,
     label: str,
+    existing_key: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
     clean_id = entry_id.strip()
@@ -100,14 +105,16 @@ def validate_catalog_entry(
     other_section_name = "treatments" if section_name == "locations" else "locations"
     other_section = config[other_section_name]
 
-    for existing_key, existing in same_section.items():
+    for section_key, existing in same_section.items():
+        if section_key == existing_key:
+            continue
         if normalized_id == normalize_value(existing["id"]):
             errors.append(
-                f"{section_name[:-1].capitalize()} ID `{clean_id}` already exists as `{existing_key}`."
+                f"{section_name[:-1].capitalize()} ID `{clean_id}` already exists as `{section_key}`."
             )
         if normalized_label == normalize_value(existing["label"]):
             errors.append(
-                f"{section_name[:-1].capitalize()} label `{clean_label}` already exists as `{existing_key}`."
+                f"{section_name[:-1].capitalize()} label `{clean_label}` already exists as `{section_key}`."
             )
 
     for existing_key, existing in other_section.items():
@@ -135,3 +142,22 @@ def append_catalog_entry(
     entry_key = next_available_key(section, base_key)
     section[entry_key] = {"id": entry_id.strip(), "label": label.strip()}
     return entry_key
+
+
+def update_catalog_entry(
+    config: dict,
+    *,
+    section_name: str,
+    entry_key: str,
+    entry_id: str,
+    label: str,
+    active: bool,
+) -> None:
+    updated_entry = dict(config[section_name][entry_key])
+    updated_entry["id"] = entry_id.strip()
+    updated_entry["label"] = label.strip()
+    if active:
+        updated_entry.pop("active", None)
+    else:
+        updated_entry["active"] = False
+    config[section_name][entry_key] = updated_entry

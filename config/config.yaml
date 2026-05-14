@@ -86,7 +86,7 @@ treatments:
   F: { id: "F", label: "NSC Site F" }
 
 event_types:
-  blank: { id: "", label: "Point / not applicable" }
+  blank: { id: "", label: "Point" }
   IN: { id: "IN", label: "Inflow" }
   OT: { id: "OT", label: "Outflow" }
 
@@ -218,7 +218,7 @@ analytes:
     analyses_code: "H"
     preserved: "Nitric"
     volume_ml: 125
-    comment: "Arsenic, Se, Fe"
+    comment: "See COC for Specific Metals"
     label_suffix: "Nitric"
     exclude_from_als: false
     include_in_blank: true

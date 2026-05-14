@@ -35,7 +35,7 @@ This tool is intended to:
   - Event type (inflow, outflow, point)
   - One or more sample methods
   - One or more analytes
-  - Duplicate status
+  - Field duplicate checkbox
   - Optional custom comment
 - Automatic label generation following AWQP standards
 - Single Excel workbook export with multiple sheets for all generated outputs
@@ -167,6 +167,7 @@ The existing label workflow is systematic, but it has historically required a sm
 
 - Each selected treatment is combined with each selected sample method
 - Each analyte is then generated for every treatment/method combination
+- If field duplicate is checked, the app generates the normal rows and matching duplicate rows
 - Example: `2 treatments x 2 methods x 4 analytes = 16 sample rows`
 
 ### Current Output Rules
@@ -191,7 +192,7 @@ The `Event` export mirrors the tab used for season event tracking. A typical out
 | `NHC-ROAD-01-GB-1` | `1` | `04/15/2025` | `NO3+NO2/OP*/TDS` | `A,B,G` | `No` | `500` | |
 | `NHC-ROAD-01-GB-2` | `1` | `04/15/2025` | `TKN/TP` | `C,D` | `Sulfuric` | `250` | |
 | `NHC-ROAD-01-GB-4` | `1` | `04/15/2025` | `TSS` | `E` | `No` | `125` | |
-| `NHC-ROAD-01-GB-10` | `1` | `04/15/2025` | `Heavy Metal` | `H` | `Nitric` | `125` | `Arsenic, Se, Fe` |
+| `NHC-ROAD-01-GB-10` | `1` | `04/15/2025` | `Heavy Metal` | `H` | `Nitric` | `125` | `See COC for Specific Metals` |
 
 This is the same basic structure used by the workbook example, but generated automatically from guided inputs instead of manual spreadsheet editing.
 

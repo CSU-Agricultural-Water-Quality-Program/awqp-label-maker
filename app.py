@@ -26,6 +26,7 @@ from utils.label_builder import (
     add_group_to_plan,
     build_output_tables,
     empty_plan,
+    get_group_duplicate_keys,
     remove_group_from_plan,
 )
 from utils.table_appender import append_uploaded_tables
@@ -73,6 +74,10 @@ def workbook_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
             frame.to_excel(writer, sheet_name=name[:31], index=False)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def dated_filename(prefix: str, extension: str, filename_date: date | None = None) -> str:
+    return f"{prefix}_{(filename_date or date.today()).strftime('%Y-%m-%d')}.{extension}"
 
 
 def get_secret_value(secret_names: tuple[str, ...], source: Mapping[str, object]) -> str:
@@ -432,49 +437,62 @@ def render_admin_page(config: dict, config_path: Path) -> None:
 
 def render_guide() -> None:
     st.header("Guide")
-    st.markdown(
-        """
-        Use this app to build AWQP sample IDs and exports from human-readable selections.
-
-        **Basic workflow**
-        1. Choose a location.
-        2. Choose one or more treatments.
-        3. Choose an event type, event number, and one or more sample methods.
-        4. Choose the analytes to generate.
-        5. Add the sample group, review the outputs, and download either an Excel workbook or a CSV ZIP.
-
-        **How row counts work**
-        - Every selected treatment is combined with every selected sample method.
-        - Every analyte is then generated for each of those combinations.
-        - Example: `2 treatments x 2 methods x 4 analytes = 16 rows`.
-
-        **Outputs**
-        - `Labels`: printable label rows with the label text column.
-        - `Event`: event-list rows for AWQP tracking.
-        - `For ALS Lab COC`: same core rows, excluding in-house analytes such as TSS, pH, and EC.
-        - Download: one Excel workbook with one sheet per output table, or a ZIP bundle of CSV files.
-        - Preview: review each output table in the app before downloading.
-
-        **Comments**
-        - Some analytes include a default comment, such as heavy metals.
-        - `Custom comment` lets you replace that default comment for all rows in the sample group.
-
-        **Lab blank**
-        - Enable `Include lab blank rows` in the sidebar when you need the blank included in the export set.
-
-        **Navigation**
-        - Use the sidebar `Pages` selector to switch between the label builder, season list tools, the admin page, and this guide.
-
-        **Season list builder**
-        - Use the `Season List Builder` page to upload older CSV or Excel exports.
-        - The app will recognize `Labels`, `Event`, and `For ALS Lab COC` tables, append matching rows, and let you download a fresh combined workbook or CSV ZIP.
-
-        **Admin**
-        - Use the `Admin` page to add canonical locations, add treatments, fix typos, or mark old entries inactive.
-        - The admin page is protected by a shared password set in Streamlit secrets or the app environment.
-        - Regular users do not need this password. Only admins who maintain the canonical catalog should use this page.
-        """
+    label_tab, season_tab, admin_tab = st.tabs(
+        ["Label Builder", "Season List Builder", "Admin"]
     )
+
+    with label_tab:
+        st.markdown(
+            """
+            **Basic workflow**
+            1. Complete the sidebar session options.
+            2. Choose a location, treatment, event type, event number, and sample method.
+            3. Choose the analytes to generate.
+            4. Check `Include field duplicate` when the sample group has duplicates.
+            5. Add the sample group, review the outputs, and download either an Excel workbook or a CSV ZIP.
+
+            **How row counts work**
+            - Every selected treatment is combined with every selected sample method.
+            - Every analyte is generated for each treatment/method combination.
+            - If field duplicates are checked, the app generates the normal rows and matching duplicate rows.
+            - Example: `2 treatments x 2 methods x 4 analytes = 16 rows`, or `32 rows` with duplicates.
+
+            **Outputs**
+            - `Labels`: printable label rows with the label text column.
+            - `Event`: event-list rows for AWQP tracking.
+            - `For ALS Lab COC`: same core rows, excluding in-house analytes such as TSS, pH, and EC.
+            - Preview each output table in the app before downloading.
+
+            **Comments and lab blanks**
+            - Some analytes include a default comment, such as heavy metals.
+            - `Custom comment` replaces that default comment for all rows in the sample group.
+            - Lab blank rows are controlled by the sidebar session options.
+            """
+        )
+
+    with season_tab:
+        st.markdown(
+            """
+            **Season list builder**
+            - Upload older CSV or Excel exports from this app.
+            - The app recognizes `Labels`, `Event`, and `For ALS Lab COC` tables.
+            - Matching rows are appended in upload order.
+            - This page does not deduplicate anything automatically.
+            - Download a fresh combined Excel workbook or CSV ZIP after reviewing the combined tables.
+            """
+        )
+
+    with admin_tab:
+        st.markdown(
+            """
+            **Admin**
+            - Add canonical locations and treatments.
+            - Fix typos in IDs or user-facing labels.
+            - Mark old entries inactive so they disappear from normal selection lists without deleting catalog history.
+            - The admin page is protected by a shared password set in Streamlit secrets or the app environment.
+            - Regular users do not need this password.
+            """
+        )
 
 
 def render_season_list_builder() -> None:
@@ -533,7 +551,7 @@ def render_season_list_builder() -> None:
     st.download_button(
         "Download combined Excel workbook",
         data=workbook_bytes(combined_tables),
-        file_name="awqp_season_lists.xlsx",
+        file_name=dated_filename("awqp_season_lists", "xlsx"),
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     st.download_button(
@@ -586,25 +604,29 @@ with st.sidebar:
         key="page",
     )
     st.divider()
-    collection_date = date.today()
-    include_lab_blank = True
-    blank_context = (
-        ACTIVE_LOCATION_KEYS[0]
-        if ACTIVE_LOCATION_KEYS
-        else next(iter(CONFIG["locations"]), None)
-    )
+    collection_date = None
+    include_lab_blank = False
+    blank_context = None
     if page == "Label Builder":
         st.header("Session Options")
-        collection_date = st.date_input("Collection date", value=date.today())
-        include_lab_blank = st.checkbox("Include lab blank rows", value=True)
-        if ACTIVE_LOCATION_KEYS:
+        collection_date = st.date_input("Collection date", value=None)
+        lab_blank_choice = st.radio(
+            "Include lab blank rows",
+            options=["Yes", "No"],
+            index=None,
+            horizontal=True,
+        )
+        include_lab_blank = lab_blank_choice == "Yes"
+        if include_lab_blank and ACTIVE_LOCATION_KEYS:
             blank_context = st.selectbox(
                 "Lab blank location context",
                 options=ACTIVE_LOCATION_KEYS,
+                index=None,
+                placeholder="Choose a location",
                 format_func=lambda key: CONFIG["locations"][key]["label"],
                 help="Used to build blank IDs like BK-NHC-01-1.",
             )
-        else:
+        elif include_lab_blank:
             st.error("No active locations are available. Use Admin to reactivate at least one location.")
         st.divider()
         st.write("Current batch")
@@ -651,7 +673,7 @@ else:
                     help="Select one or more treatments. Multiple selections create rows for each treatment.",
                 )
                 event_type_key = st.selectbox(
-                    "Event type",
+                    "Event type (i.e., Point/Inflow/Outflow)",
                     options=list(CONFIG["event_types"].keys()),
                     format_func=lambda key: CONFIG["event_types"][key]["label"],
                 )
@@ -668,16 +690,13 @@ else:
                     options=CONFIG["event_numbers"],
                     help="Non-storm events use 01-0X. Storm events use S1-SX.",
                 )
-                irrigation_or_storm = st.text_input(
-                    "Irr/Str value",
-                    value=default_irr_str(event_number),
-                    help="Defaults to the numeric part of the event number. Adjust if needed.",
+                st.caption(
+                    f"Irr/Str will be set to `{default_irr_str(event_number)}` from the event number."
                 )
             with c3:
-                duplicate_key = st.selectbox(
-                    "Duplicate",
-                    options=list(CONFIG["duplicates"].keys()),
-                    format_func=lambda key: CONFIG["duplicates"][key]["label"],
+                include_duplicates = st.checkbox(
+                    "Include field duplicate",
+                    help="When checked, this sample group generates normal rows plus matching duplicate rows.",
                 )
                 analyte_keys = st.multiselect(
                     "Analytes",
@@ -708,8 +727,8 @@ else:
                     event_type_key=event_type_key,
                     method_keys=method_keys,
                     event_number=event_number,
-                    irrigation_or_storm=irrigation_or_storm,
-                    duplicate_key=duplicate_key,
+                    irrigation_or_storm=default_irr_str(event_number),
+                    include_duplicates=include_duplicates,
                     analyte_keys=analyte_keys,
                     custom_comment=custom_comment,
                 )
@@ -720,13 +739,15 @@ else:
         st.subheader("Sample Groups in Batch")
         for index, group in enumerate(groups):
             combination_count = len(group["treatment_keys"]) * len(group["method_keys"])
-            projected_row_count = combination_count * len(group["analyte_keys"])
+            duplicate_count = len(get_group_duplicate_keys(group, CONFIG))
+            projected_row_count = combination_count * len(group["analyte_keys"]) * duplicate_count
+            duplicate_label = "yes" if duplicate_count > 1 else "no"
             summary = (
                 f"{CONFIG['locations'][group['location_key']]['label']} | "
                 f"{combination_count} treatment/method combination(s) | "
                 f"{len(group['analyte_keys'])} analytes | "
                 f"{projected_row_count} generated sample row(s)"
-                f" | duplicate: {CONFIG['duplicates'][group['duplicate_key']]['label']}"
+                f" | field duplicate: {duplicate_label}"
             )
             cols = st.columns([6, 1])
             cols[0].write(summary)
@@ -740,32 +761,45 @@ else:
                 remove_group_from_plan(st.session_state.sample_plan, index)
                 st.rerun()
 
-        tables = build_output_tables(
-            st.session_state.sample_plan,
-            CONFIG,
-            collection_date=collection_date,
-            include_lab_blank=include_lab_blank,
-            blank_location_key=blank_context,
-        )
+        session_errors = []
+        if collection_date is None:
+            session_errors.append("Choose a collection date in Session Options.")
+        if lab_blank_choice is None:
+            session_errors.append("Choose whether to include lab blank rows in Session Options.")
+        if include_lab_blank and blank_context is None:
+            session_errors.append("Choose a lab blank location context in Session Options.")
 
-        st.subheader("Outputs")
-        tabs = st.tabs(list(tables.keys()))
-        for tab, (name, frame) in zip(tabs, tables.items()):
-            with tab:
-                st.dataframe(frame, use_container_width=True, hide_index=True)
+        if session_errors:
+            st.warning("Complete Session Options before generating outputs.")
+            for error in session_errors:
+                st.caption(error)
+        else:
+            tables = build_output_tables(
+                st.session_state.sample_plan,
+                CONFIG,
+                collection_date=collection_date,
+                include_lab_blank=include_lab_blank,
+                blank_location_key=blank_context or ACTIVE_LOCATION_KEYS[0],
+            )
 
-        st.download_button(
-            "Download Excel workbook",
-            data=workbook_bytes(tables),
-            file_name="awqp_label_outputs.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        st.download_button(
-            "Download ZIP of CSVs",
-            data=zip_exports(tables),
-            file_name="awqp_label_outputs_csv.zip",
-            mime="application/zip",
-        )
+            st.subheader("Outputs")
+            tabs = st.tabs(list(tables.keys()))
+            for tab, (name, frame) in zip(tabs, tables.items()):
+                with tab:
+                    st.dataframe(frame, use_container_width=True, hide_index=True)
+
+            st.download_button(
+                "Download Excel workbook",
+                data=workbook_bytes(tables),
+                file_name=dated_filename("awqp_label_outputs", "xlsx", collection_date),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            st.download_button(
+                "Download ZIP of CSVs",
+                data=zip_exports(tables),
+                file_name="awqp_label_outputs_csv.zip",
+                mime="application/zip",
+            )
     else:
         st.info("Add a sample group to start building outputs.")
 

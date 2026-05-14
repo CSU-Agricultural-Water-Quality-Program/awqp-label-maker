@@ -92,7 +92,7 @@ def add_group_to_plan(
     method_keys: list[str],
     event_number: str,
     irrigation_or_storm: str,
-    duplicate_key: str,
+    include_duplicates: bool,
     analyte_keys: list[str],
     custom_comment: str,
 ) -> None:
@@ -104,7 +104,7 @@ def add_group_to_plan(
             "method_keys": method_keys,
             "event_number": event_number,
             "irrigation_or_storm": irrigation_or_storm,
-            "duplicate_key": duplicate_key,
+            "include_duplicates": include_duplicates,
             "analyte_keys": analyte_keys,
             "custom_comment": custom_comment,
         }
@@ -125,6 +125,27 @@ def build_sample_id(base_id: str, analyte_id: str, duplicate_id: str) -> str:
     return sample_id if not duplicate_id else f"{sample_id}-{duplicate_id}"
 
 
+def get_group_duplicate_keys(group: dict, config: dict) -> list[str]:
+    if "duplicate_key" in group:
+        duplicate_key = group["duplicate_key"]
+        if duplicate_key != "blank":
+            return ["blank", duplicate_key]
+        return ["blank"]
+
+    if not group.get("include_duplicates", False):
+        return ["blank"]
+
+    if "D" in config["duplicates"]:
+        return ["blank", "D"]
+
+    duplicate_keys = [
+        key
+        for key, duplicate in config["duplicates"].items()
+        if duplicate.get("id", "")
+    ]
+    return ["blank", *duplicate_keys[:1]]
+
+
 def collect_rows(
     plan: dict,
     config: dict,
@@ -137,7 +158,6 @@ def collect_rows(
     date_str = collection_date.strftime("%m/%d/%Y")
 
     for group in plan["groups"]:
-        duplicate_id = config["duplicates"][group["duplicate_key"]]["id"]
         for treatment_key, method_key in product(
             group["treatment_keys"], group["method_keys"]
         ):
@@ -149,24 +169,26 @@ def collect_rows(
                 event_type_key=group["event_type_key"],
                 method_key=method_key,
             )
-            for analyte_key in group["analyte_keys"]:
-                analyte = config["analytes"][analyte_key]
-                sample_id = build_sample_id(base_id, analyte["id"], duplicate_id)
-                comment = group["custom_comment"] or analyte.get("comment", "")
-                rows.append(
-                    SampleRow(
-                        sample_id=sample_id,
-                        irr_str=group["irrigation_or_storm"],
-                        collection_date=date_str,
-                        analysis=analyte["analysis"],
-                        analyses_code=analyte["analyses_code"],
-                        preserved=analyte["preserved"],
-                        volume=analyte["volume_ml"],
-                        comment=comment,
-                        label=make_label(sample_id, analyte),
-                        exclude_from_als=analyte.get("exclude_from_als", False),
+            for duplicate_key in get_group_duplicate_keys(group, config):
+                duplicate_id = config["duplicates"][duplicate_key]["id"]
+                for analyte_key in group["analyte_keys"]:
+                    analyte = config["analytes"][analyte_key]
+                    sample_id = build_sample_id(base_id, analyte["id"], duplicate_id)
+                    comment = group["custom_comment"] or analyte.get("comment", "")
+                    rows.append(
+                        SampleRow(
+                            sample_id=sample_id,
+                            irr_str=group["irrigation_or_storm"],
+                            collection_date=date_str,
+                            analysis=analyte["analysis"],
+                            analyses_code=analyte["analyses_code"],
+                            preserved=analyte["preserved"],
+                            volume=analyte["volume_ml"],
+                            comment=comment,
+                            label=make_label(sample_id, analyte),
+                            exclude_from_als=analyte.get("exclude_from_als", False),
+                        )
                     )
-                )
 
     if include_lab_blank and plan["groups"]:
         event_number = plan["groups"][0]["event_number"]

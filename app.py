@@ -230,12 +230,17 @@ def render_admin_page(config: dict, config_path: Path) -> None:
 
             if location_context == "__new__":
                 location_id = st.text_input(
-                    "Location ID code",
-                    help="Used in sample IDs. Letters, numbers, and underscores only.",
+                    "Location ID code (example: FF)",
+                    placeholder="FF",
+                    help=(
+                        "Short code used in sample IDs, such as `FF` for Fruita Fertilizer. "
+                        "Letters, numbers, and underscores only."
+                    ),
                 )
                 location_label = st.text_input(
-                    "Location label",
-                    help="Shown to users in the app.",
+                    "Location label (example: Fruita Fertilizer)",
+                    placeholder="Fruita Fertilizer",
+                    help="Full location name shown to users in the app.",
                 )
                 if location_id.strip():
                     suggested_key = next_available_key(
@@ -252,12 +257,17 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                 )
 
             treatment_id = st.text_input(
-                "Treatment ID code (optional)",
-                help="Leave blank if the location does not need a new treatment.",
+                "Treatment ID code (optional, example: F1)",
+                placeholder="F1",
+                help=(
+                    "Short treatment code used in sample IDs, such as `F1` for Fruita F1. "
+                    "Leave blank if the location does not need a new treatment."
+                ),
             )
             treatment_label = st.text_input(
-                "Treatment label (optional)",
-                help="Shown to users in the app.",
+                "Treatment label (optional, example: Fruita F1)",
+                placeholder="Fruita F1",
+                help="Full treatment name shown to users in the app.",
             )
 
             if treatment_label.strip():

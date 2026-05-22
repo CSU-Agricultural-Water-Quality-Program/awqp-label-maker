@@ -138,7 +138,7 @@ def render_catalog_table(title: str, entries: dict[str, dict]) -> None:
         for key, value in entries.items()
     ]
     st.subheader(title)
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def update_catalog_status_errors(
@@ -555,7 +555,7 @@ def render_season_list_builder() -> None:
     tabs = st.tabs(list(combined_tables.keys()))
     for tab, (name, frame) in zip(tabs, combined_tables.items()):
         with tab:
-            st.dataframe(frame, use_container_width=True, hide_index=True)
+            st.dataframe(frame, width="stretch", hide_index=True)
             st.caption("Sources: " + ", ".join(table_sources[name]))
 
     st.download_button(
@@ -796,7 +796,7 @@ else:
             tabs = st.tabs(list(tables.keys()))
             for tab, (name, frame) in zip(tabs, tables.items()):
                 with tab:
-                    st.dataframe(frame, use_container_width=True, hide_index=True)
+                    st.dataframe(frame, width="stretch", hide_index=True)
 
             st.download_button(
                 "Download Excel workbook",

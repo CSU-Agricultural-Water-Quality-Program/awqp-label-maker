@@ -45,6 +45,90 @@ AWQP_LOGO_URL = (
     "https://agsci.colostate.edu/waterquality/wp-content/uploads/sites/160/2024/05/"
     "AWQP_horizontalhighres.png"
 )
+ALS_R_DICTIONARIES_TEXT = """# Dictionaries for interpreting sample ID codes
+# Add to these at needed for new locations, treatments, methods, etc.
+location.dict <- list(
+  "ARDEC" = "A2", #TODO: fix 2200 labeling in process data fxn; 2200 is removed
+  "ARDEC South - Conv" = "ASC",
+  "ARDEC South - Org" = "ASO",
+  "AVRC STAR" = c("AV", "AVST1", "AVST2", "AVCT1", "AVCT2"),
+  "Barley" = "BAR",
+  "Berthoud" = "BT",
+  "Big Hollow" = "HOL",
+  "Boulder Lake" = "BOL",
+  "Gunnison" = "GU",
+  "Kerbel" = c("K", "KBI", "ST1", "ST2", "CT1", "CT2", "MT1", "MT2", "INF"),
+  "Legacy" = "LG",
+  "Molina" = "MOL",
+  "Stagecoach" = c("SC", "SB", "SCA", "SB-SCA", "SCI", "SB-SCI", "SCO", "SB-SCO", "MOR", "SB-MOR", "TR", "SB-TR"),
+  # "Morrison Creek" = c("MOR","SB-MOR"),
+  # "Stage Coach Above" = c("SCA","SB-SCA"),
+  # "Stage Coach In" = c("SCI", "SB-SCI"),
+  # "Stage Coach Dam Outflow" = c("SCO","SB-SCO"),
+  # "The Ranch" = c("TR","SB-TR"), # Formerly, "Todd's Ranch"
+  "Upper Yampa" = "UYM",
+  "Yellow Jacket " = "YJ",
+  "Fruita W" = c("W1", "W2", "FW", "FW1", "FW2"),
+  "Fruita B" = c("FB", "FBR", "F-BR", "F-B", "BR"),
+  "Fruita NT" = "FNT",
+  "Fruita A" = c("FA", "FALF", "F-ALF", "ALF"),
+  "Fruita C" = c("FC", "FC1", "FC2", "C1", "C2"),
+  "Fruita F" = c("FF", "FF1", "FF2", "FF3", "FF4", "F1", "F2", "F3", "F4"),
+  "AVRC Cowpea" = c("COW", "T1", "T2", "T3", "T4"),
+  "North Sand Creek" = c("NSC", "J", "G", "F"),
+  "Lab Blank" = "BK",
+  "Method Blank" = "Method Blank",
+  "Lab Control Sample" = "Lab Control Sample"
+)
+
+trt.dict <- list(
+  #note that leaving AVRC and Kerbel as CT/MT/ST breaks the GPS coordinate locator b/c it needs the block# in the trt name to find it (e.g., CT2)
+  #I've opted to let this be the case for now, but it could be fixed by adding the block# to the treatment.name here if needed.
+  "ST" = c("ST1", "AVST1", "ST2", "AVST2"),
+  "CT" = c("CT1", "AVCT1", "CT2", "AVCT2"),
+  "MT" = c("MT1", "MT2"),
+  "River A" = "RVA",
+  "River B" = "RVB",
+  "River Middle" = "RVMID",
+  "Piezometer East" = "PZE",
+  "Piezometer West" = "PZW",
+  "Piezometer North" = "PZN",
+  "Piezometer South" = "PZS",
+  "Tile Drainage River" = "TDR",
+  "Tile Drainage Lake" = "TDL",
+  "Confluence" = "CON",
+  "Upstream of Bridge" = "UP",
+  "Downstream of Bridge" = "DOWN",
+  "Middle at Bridge" = "MID",
+  "Arapahoe Natl. Forest" = "ANF",
+  "Willow Creek" = "WC",
+  "Duck Pond" = "DP",
+  "Upper willow at @ culvert (swale)" = "CUL",
+  "Fish Pond" = "FP",
+  "Fire 2" = "FR2",
+  "Stagecoach ISCO" = c("SC", "SB"),
+  "Morrison Creek" = c("MOR","SB-MOR"),
+  "Stagecoach Above" = c("SCA","SB-SCA"),
+  "Stagecoach In" = c("SCI", "SB-SCI"),
+  "Stagecoach Dam Outflow" = c("SCO","SB-SCO"),
+  "The Ranch" = c("TR","SB-TR"), # Formerly, "Todd's Ranch"
+  "W1" = c("W1", "FW1"),
+  "W2" = c("W2", "FW2"),
+  "C1" = c("C1", "FC1"),
+  "C2" = c("C2", "FC2"),
+  "Fertilizer Treatment 1" =c("F1", "FF1"),
+  "Fertilizer Treatment 2" =c("F2", "FF2"),
+  "Fertilizer Treatment 3" =c("F3", "FF3"),
+  "Fertilizer Treatment 4" =c("F4", "FF4"),
+  "Cowpea Treatment 1" = c("T1"),
+  "Cowpea Treatment 2" = c("T2"),
+  "Cowpea Treatment 3" = c("T3"),
+  "Cowpea Treatment 4" = c("T4"),
+  "NSC Site J" = c("J"),
+  "NSC Site G" = c("G"),
+  "NSC Site F" = c("F")
+)
+"""
 
 
 def default_irr_str(event_number: str) -> str:
@@ -250,6 +334,30 @@ def render_catalog_editor(
         st.rerun()
 
 
+def render_als_dictionary_export() -> None:
+    st.subheader("ALS Data Cleaning Tool Dictionaries")
+    st.markdown(
+        """
+        Use this when labels, locations, or treatments change in the Label Editor.
+
+        1. Copy the R text below.
+        2. Paste it over the existing `location.dict` and `trt.dict` objects in the ALS Data Cleaning Tool.
+        3. Save that R script before running the cleaning workflow so both tools stay compatible.
+        """
+    )
+    st.text_area(
+        "R dictionary text to paste into the ALS Data Cleaning Tool",
+        value=ALS_R_DICTIONARIES_TEXT,
+        height=900,
+    )
+    st.download_button(
+        "Download R dictionaries",
+        data=ALS_R_DICTIONARIES_TEXT,
+        file_name="als_data_cleaning_tool_dicts.R",
+        mime="text/x-r-source",
+    )
+
+
 def update_catalog_status_errors(
     config: dict,
     *,
@@ -316,7 +424,17 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         st.session_state.admin_authenticated = False
         st.rerun()
 
-    catalog_manager_tab, current_catalog_tab = st.tabs(["Catalog Manager", "Catalog Tables"])
+    current_catalog_tab, catalog_manager_tab, als_export_tab = st.tabs(
+        ["Label Editor", "New Entry", "ALS R Dicts"]
+    )
+
+    with current_catalog_tab:
+        st.caption(
+            "These are the existing locations and treatments currently available in the app. Edit cells directly, then save the section you changed."
+        )
+        render_catalog_editor("Locations", config, config_path, section_name="locations")
+        st.divider()
+        render_catalog_editor("Treatments", config, config_path, section_name="treatments")
 
     with catalog_manager_tab:
         st.subheader("Add Location and Optional Treatment")
@@ -341,7 +459,6 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             if location_context == "__new__":
                 location_id = st.text_input(
                     "Location ID code (example: FF)",
-                    placeholder="FF",
                     help=(
                         "Short code used in sample IDs, such as `FF` for Fruita Fertilizer. "
                         "Letters, numbers, and underscores only."
@@ -349,7 +466,6 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                 )
                 location_label = st.text_input(
                     "Location label (example: Fruita Fertilizer)",
-                    placeholder="Fruita Fertilizer",
                     help="Full location name shown to users in the app.",
                 )
                 if location_id.strip():
@@ -368,7 +484,6 @@ def render_admin_page(config: dict, config_path: Path) -> None:
 
             treatment_id = st.text_input(
                 "Treatment ID code (optional, example: F1)",
-                placeholder="F1",
                 help=(
                     "Short treatment code used in sample IDs, such as `F1` for Fruita F1. "
                     "Leave blank if the location does not need a new treatment."
@@ -376,7 +491,6 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             )
             treatment_label = st.text_input(
                 "Treatment label (optional, example: Fruita F1)",
-                placeholder="Fruita F1",
                 help="Full treatment name shown to users in the app.",
             )
 
@@ -454,13 +568,8 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                 st.success(" ".join(messages))
                 st.rerun()
 
-    with current_catalog_tab:
-        st.caption(
-            "Edit existing locations and treatments directly in these tables, then save the section you changed."
-        )
-        render_catalog_editor("Locations", config, config_path, section_name="locations")
-        st.divider()
-        render_catalog_editor("Treatments", config, config_path, section_name="treatments")
+    with als_export_tab:
+        render_als_dictionary_export()
 
 
 def render_guide() -> None:

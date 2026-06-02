@@ -133,12 +133,121 @@ def render_catalog_table(title: str, entries: dict[str, dict]) -> None:
             "Key": key,
             "ID": value["id"],
             "Label": value["label"],
-            "Status": "Active" if is_catalog_entry_active(value) else "Inactive",
+            "Active": is_catalog_entry_active(value),
         }
         for key, value in entries.items()
     ]
     st.subheader(title)
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+
+def render_catalog_editor(
+    title: str,
+    config: dict,
+    config_path: Path,
+    *,
+    section_name: str,
+) -> None:
+    st.subheader(title)
+
+    editable_rows = []
+    system_rows = []
+    for key, value in config[section_name].items():
+        row = {
+            "Key": key,
+            "ID": value["id"],
+            "Label": value["label"],
+            "Active": is_catalog_entry_active(value),
+        }
+        if section_name == "treatments" and key == "blank":
+            system_rows.append(row)
+        else:
+            editable_rows.append(row)
+
+    if not editable_rows:
+        st.info(f"No editable {section_name} entries are currently available.")
+        return
+
+    edited_frame = st.data_editor(
+        pd.DataFrame(editable_rows),
+        width="stretch",
+        hide_index=True,
+        disabled=["Key"],
+        column_config={
+            "Key": st.column_config.TextColumn("Key"),
+            "ID": st.column_config.TextColumn("ID"),
+            "Label": st.column_config.TextColumn("Label"),
+            "Active": st.column_config.CheckboxColumn("Active"),
+        },
+        key=f"{section_name}_catalog_editor",
+    )
+
+    if system_rows:
+        st.caption("System row")
+        st.dataframe(pd.DataFrame(system_rows), width="stretch", hide_index=True)
+
+    if st.button(
+        f"Save {title.lower()} table changes",
+        type="primary",
+        key=f"save_{section_name}_table",
+    ):
+        proposed_entries = edited_frame.to_dict("records")
+        candidate_config = {
+            "locations": {key: dict(value) for key, value in config["locations"].items()},
+            "treatments": {key: dict(value) for key, value in config["treatments"].items()},
+        }
+        for row in proposed_entries:
+            entry_id = "" if pd.isna(row["ID"]) else str(row["ID"]).strip()
+            entry_label = "" if pd.isna(row["Label"]) else str(row["Label"]).strip()
+            candidate_config[section_name][str(row["Key"])] = {
+                "id": entry_id,
+                "label": entry_label,
+                **({} if bool(row["Active"]) else {"active": False}),
+            }
+
+        errors: list[str] = []
+
+        for row in proposed_entries:
+            entry_id = "" if pd.isna(row["ID"]) else str(row["ID"]).strip()
+            entry_label = "" if pd.isna(row["Label"]) else str(row["Label"]).strip()
+            row_errors = validate_catalog_entry(
+                candidate_config,
+                section_name=section_name,
+                entry_id=entry_id,
+                label=entry_label,
+                existing_key=str(row["Key"]),
+            )
+            row_errors.extend(
+                update_catalog_status_errors(
+                    candidate_config,
+                    section_name=section_name,
+                    entry_key=str(row["Key"]),
+                    active=bool(row["Active"]),
+                )
+            )
+            for error in row_errors:
+                errors.append(f"{row['Key']}: {error}")
+
+        if errors:
+            for error in dict.fromkeys(errors):
+                st.error(error)
+            return
+
+        for row in proposed_entries:
+            entry_id = "" if pd.isna(row["ID"]) else str(row["ID"]).strip()
+            entry_label = "" if pd.isna(row["Label"]) else str(row["Label"]).strip()
+            update_catalog_entry(
+                config,
+                section_name=section_name,
+                entry_key=str(row["Key"]),
+                entry_id=entry_id,
+                label=entry_label,
+                active=bool(row["Active"]),
+            )
+
+        save_config(config_path, config)
+        st.success(f"{title} table saved.")
+        st.rerun()
 
 
 def update_catalog_status_errors(
@@ -160,20 +269,20 @@ def update_catalog_status_errors(
 
 
 def render_admin_page(config: dict, config_path: Path) -> None:
-    st.header("Admin")
+    st.header("Label Editor")
     st.markdown(
         """
         Use this page to add, correct, and retire canonical locations and treatments.
 
         Add a location by itself, or save a location and its first treatment together.
-        Inactive entries are hidden from normal users but remain in the catalog for admin review.
+        Inactive entries are hidden from normal users but remain in the catalog for editor review.
         """
     )
 
     admin_password = get_admin_password()
     if not admin_password:
         st.error(
-            "Admin editing is disabled. Set `admin_password` or `AWQP_ADMIN_PASSWORD` in "
+            "Label Editor access is disabled. Set `admin_password` or `AWQP_ADMIN_PASSWORD` in "
             "Streamlit secrets, or set "
             "`AWQP_ADMIN_PASSWORD` in the environment."
         )
@@ -189,9 +298,10 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             st.caption(conflict)
 
     if not st.session_state.get("admin_authenticated", False):
+        st.info("This page is protected by a shared password.")
         with st.form("admin_login_form"):
-            shared_password = st.text_input("Shared admin password", type="password")
-            unlock = st.form_submit_button("Unlock admin tools", type="primary")
+            shared_password = st.text_input("Shared Label Editor password", type="password")
+            unlock = st.form_submit_button("Unlock Label Editor", type="primary")
 
         if unlock:
             if hmac.compare_digest(shared_password, admin_password):
@@ -201,12 +311,12 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         return
 
     auth_cols = st.columns([5, 1])
-    auth_cols[0].success("Admin tools unlocked for this browser session.")
+    auth_cols[0].success("Label Editor unlocked for this browser session.")
     if auth_cols[1].button("Log out"):
         st.session_state.admin_authenticated = False
         st.rerun()
 
-    catalog_manager_tab, current_catalog_tab = st.tabs(["Catalog Manager", "Current Catalog"])
+    catalog_manager_tab, current_catalog_tab = st.tabs(["Catalog Manager", "Catalog Tables"])
 
     with catalog_manager_tab:
         st.subheader("Add Location and Optional Treatment")
@@ -341,114 +451,22 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                     )
 
                 save_config(config_path, config)
-                st.session_state.page = "Admin"
                 st.success(" ".join(messages))
                 st.rerun()
 
-        st.divider()
-        st.subheader("Edit Existing Entry")
-        st.caption(
-            "Fix typos by updating IDs or labels. Mark old entries inactive to remove them "
-            "from normal user dropdowns without deleting them from the admin catalog."
-        )
-
-        catalog_section_label = st.radio(
-            "Catalog",
-            options=["Locations", "Treatments"],
-            horizontal=True,
-        )
-        section_name = "locations" if catalog_section_label == "Locations" else "treatments"
-        editable_keys = [
-            key
-            for key in config[section_name].keys()
-            if not (section_name == "treatments" and key == "blank")
-        ]
-
-        if section_name == "treatments":
-            st.caption("`No treatment` is a system entry and stays fixed.")
-
-        if not editable_keys:
-            st.info(f"No editable {section_name} entries are currently available.")
-        else:
-            selected_key = st.selectbox(
-                f"{catalog_section_label[:-1]} entry",
-                options=editable_keys,
-                format_func=lambda key: (
-                    f"{config[section_name][key]['label']} "
-                    f"({config[section_name][key]['id'] or 'no ID'})"
-                    + (
-                        " [inactive]"
-                        if not is_catalog_entry_active(config[section_name][key])
-                        else ""
-                    )
-                ),
-            )
-            selected_entry = config[section_name][selected_key]
-
-            with st.form(f"edit_{section_name}_form"):
-                st.caption(f"Internal key: `{selected_key}`")
-                entry_id = st.text_input(
-                    f"{catalog_section_label[:-1]} ID code",
-                    value=selected_entry["id"],
-                    help="Used in sample IDs. Letters, numbers, and underscores only.",
-                )
-                entry_label = st.text_input(
-                    f"{catalog_section_label[:-1]} label",
-                    value=selected_entry["label"],
-                    help="Shown to users in the app.",
-                )
-                active = st.checkbox(
-                    "Active",
-                    value=is_catalog_entry_active(selected_entry),
-                    help="Inactive entries are hidden from standard selection lists but remain available in admin.",
-                )
-                save_entry_changes = st.form_submit_button("Update entry", type="primary")
-
-            if save_entry_changes:
-                errors = validate_catalog_entry(
-                    config,
-                    section_name=section_name,
-                    entry_id=entry_id,
-                    label=entry_label,
-                    existing_key=selected_key,
-                )
-                errors.extend(
-                    update_catalog_status_errors(
-                        config,
-                        section_name=section_name,
-                        entry_key=selected_key,
-                        active=active,
-                    )
-                )
-
-                if errors:
-                    for error in dict.fromkeys(errors):
-                        st.error(error)
-                else:
-                    update_catalog_entry(
-                        config,
-                        section_name=section_name,
-                        entry_key=selected_key,
-                        entry_id=entry_id,
-                        label=entry_label,
-                        active=active,
-                    )
-                    save_config(config_path, config)
-                    st.success(
-                        f"{catalog_section_label[:-1]} `{selected_key}` updated."
-                        f" Status: {'active' if active else 'inactive'}."
-                    )
-                    st.rerun()
-
     with current_catalog_tab:
-        render_catalog_table("Locations", config["locations"])
-        render_catalog_table("Treatments", config["treatments"])
+        st.caption(
+            "Edit existing locations and treatments directly in these tables, then save the section you changed."
+        )
+        render_catalog_editor("Locations", config, config_path, section_name="locations")
+        st.divider()
+        render_catalog_editor("Treatments", config, config_path, section_name="treatments")
 
 
 def render_guide() -> None:
     st.header("Guide")
     label_tab, season_tab, admin_tab = st.tabs(
-        ["Label Builder", "Season List Builder", "Admin"]
+        ["Label Builder", "Season List Builder", "Label Editor"]
     )
 
     with label_tab:
@@ -495,11 +513,12 @@ def render_guide() -> None:
     with admin_tab:
         st.markdown(
             """
-            **Admin**
+            **Label Editor**
             - Add canonical locations and treatments.
             - Fix typos in IDs or user-facing labels.
             - Mark old entries inactive so they disappear from normal selection lists without deleting catalog history.
-            - The admin page is protected by a shared password set in Streamlit secrets or the app environment.
+            - Review and edit the full location and treatment tables in one place.
+            - This page is protected by a shared password set in Streamlit secrets or the app environment.
             - Regular users do not need this password.
             """
         )
@@ -577,7 +596,10 @@ if "sample_plan" not in st.session_state:
 if "page" not in st.session_state:
     st.session_state.page = "Label Builder"
 if "page_redirect" in st.session_state:
-    st.session_state.page = st.session_state.page_redirect
+    if st.session_state.page_redirect == "Admin":
+        st.session_state.page = "Label Editor"
+    else:
+        st.session_state.page = st.session_state.page_redirect
     del st.session_state["page_redirect"]
 if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
@@ -610,7 +632,7 @@ with st.sidebar:
     st.divider()
     page = st.radio(
         "Pages",
-        options=["Label Builder", "Season List Builder", "Admin", "Guide"],
+        options=["Label Builder", "Season List Builder", "Label Editor", "Guide"],
         key="page",
     )
     st.divider()
@@ -637,7 +659,7 @@ with st.sidebar:
                 help="Used to build blank IDs like BK-NHC-01-1.",
             )
         elif include_lab_blank:
-            st.error("No active locations are available. Use Admin to reactivate at least one location.")
+            st.error("No active locations are available. Use Label Editor to reactivate at least one location.")
         st.divider()
         st.write("Current batch")
         st.metric("Sample groups", len(st.session_state.sample_plan["groups"]))
@@ -646,7 +668,7 @@ if page == "Guide":
     render_guide()
 elif page == "Season List Builder":
     render_season_list_builder()
-elif page == "Admin":
+elif page == "Label Editor":
     render_admin_page(CONFIG, CONFIG_PATH)
 else:
     if not ACTIVE_LOCATION_KEYS or not ACTIVE_TREATMENT_KEYS:
@@ -658,7 +680,7 @@ else:
         st.error(
             "New sample groups cannot be added because there are no active "
             + " and ".join(missing_sections)
-            + ". Use Admin to reactivate the catalog."
+            + ". Use Label Editor to reactivate the catalog."
         )
     else:
         header_cols = st.columns([6, 1])

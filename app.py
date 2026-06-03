@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hmac
+import importlib.util
 import io
 import os
 import zipfile
+from collections import defaultdict
 from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
@@ -14,11 +16,18 @@ import streamlit as st
 from utils.config_loader import (
     append_catalog_entry,
     find_cross_section_conflicts,
+    get_entry_list_field,
+    get_entry_parser_tokens,
+    get_location_treatment_keys,
+    get_treatment_group,
+    get_treatment_parent_location,
+    get_treatment_r_label,
     is_catalog_entry_active,
+    is_catalog_entry_legacy_only,
     load_config,
-    next_available_key,
-    normalize_key_fragment,
+    parse_list_field,
     save_config,
+    serialize_list_field,
     update_catalog_entry,
     validate_catalog_entry,
 )
@@ -38,96 +47,16 @@ st.set_page_config(
 )
 
 
-CONFIG_PATH = Path(__file__).parent / "config" / "config.yaml"
+CONFIG_PATH = Path(__file__).parent / "config" / "config.json"
 CONFIG = load_config(CONFIG_PATH)
 AWQP_HOME_URL = "https://agsci.colostate.edu/waterquality/"
 AWQP_LOGO_URL = (
     "https://agsci.colostate.edu/waterquality/wp-content/uploads/sites/160/2024/05/"
     "AWQP_horizontalhighres.png"
 )
-ALS_R_DICTIONARIES_TEXT = """# Dictionaries for interpreting sample ID codes
-# Add to these at needed for new locations, treatments, methods, etc.
-location.dict <- list(
-  "ARDEC" = "A2", #TODO: fix 2200 labeling in process data fxn; 2200 is removed
-  "ARDEC South - Conv" = "ASC",
-  "ARDEC South - Org" = "ASO",
-  "AVRC STAR" = c("AV", "AVST1", "AVST2", "AVCT1", "AVCT2"),
-  "Barley" = "BAR",
-  "Berthoud" = "BT",
-  "Big Hollow" = "HOL",
-  "Boulder Lake" = "BOL",
-  "Gunnison" = "GU",
-  "Kerbel" = c("K", "KBI", "ST1", "ST2", "CT1", "CT2", "MT1", "MT2", "INF"),
-  "Legacy" = "LG",
-  "Molina" = "MOL",
-  "Stagecoach" = c("SC", "SB", "SCA", "SB-SCA", "SCI", "SB-SCI", "SCO", "SB-SCO", "MOR", "SB-MOR", "TR", "SB-TR"),
-  # "Morrison Creek" = c("MOR","SB-MOR"),
-  # "Stage Coach Above" = c("SCA","SB-SCA"),
-  # "Stage Coach In" = c("SCI", "SB-SCI"),
-  # "Stage Coach Dam Outflow" = c("SCO","SB-SCO"),
-  # "The Ranch" = c("TR","SB-TR"), # Formerly, "Todd's Ranch"
-  "Upper Yampa" = "UYM",
-  "Yellow Jacket " = "YJ",
-  "Fruita W" = c("W1", "W2", "FW", "FW1", "FW2"),
-  "Fruita B" = c("FB", "FBR", "F-BR", "F-B", "BR"),
-  "Fruita NT" = "FNT",
-  "Fruita A" = c("FA", "FALF", "F-ALF", "ALF"),
-  "Fruita C" = c("FC", "FC1", "FC2", "C1", "C2"),
-  "Fruita F" = c("FF", "FF1", "FF2", "FF3", "FF4", "F1", "F2", "F3", "F4"),
-  "AVRC Cowpea" = c("COW", "T1", "T2", "T3", "T4"),
-  "North Sand Creek" = c("NSC", "J", "G", "F"),
-  "Lab Blank" = "BK",
-  "Method Blank" = "Method Blank",
-  "Lab Control Sample" = "Lab Control Sample"
-)
-
-trt.dict <- list(
-  #note that leaving AVRC and Kerbel as CT/MT/ST breaks the GPS coordinate locator b/c it needs the block# in the trt name to find it (e.g., CT2)
-  #I've opted to let this be the case for now, but it could be fixed by adding the block# to the treatment.name here if needed.
-  "ST" = c("ST1", "AVST1", "ST2", "AVST2"),
-  "CT" = c("CT1", "AVCT1", "CT2", "AVCT2"),
-  "MT" = c("MT1", "MT2"),
-  "River A" = "RVA",
-  "River B" = "RVB",
-  "River Middle" = "RVMID",
-  "Piezometer East" = "PZE",
-  "Piezometer West" = "PZW",
-  "Piezometer North" = "PZN",
-  "Piezometer South" = "PZS",
-  "Tile Drainage River" = "TDR",
-  "Tile Drainage Lake" = "TDL",
-  "Confluence" = "CON",
-  "Upstream of Bridge" = "UP",
-  "Downstream of Bridge" = "DOWN",
-  "Middle at Bridge" = "MID",
-  "Arapahoe Natl. Forest" = "ANF",
-  "Willow Creek" = "WC",
-  "Duck Pond" = "DP",
-  "Upper willow at @ culvert (swale)" = "CUL",
-  "Fish Pond" = "FP",
-  "Fire 2" = "FR2",
-  "Stagecoach ISCO" = c("SC", "SB"),
-  "Morrison Creek" = c("MOR","SB-MOR"),
-  "Stagecoach Above" = c("SCA","SB-SCA"),
-  "Stagecoach In" = c("SCI", "SB-SCI"),
-  "Stagecoach Dam Outflow" = c("SCO","SB-SCO"),
-  "The Ranch" = c("TR","SB-TR"), # Formerly, "Todd's Ranch"
-  "W1" = c("W1", "FW1"),
-  "W2" = c("W2", "FW2"),
-  "C1" = c("C1", "FC1"),
-  "C2" = c("C2", "FC2"),
-  "Fertilizer Treatment 1" =c("F1", "FF1"),
-  "Fertilizer Treatment 2" =c("F2", "FF2"),
-  "Fertilizer Treatment 3" =c("F3", "FF3"),
-  "Fertilizer Treatment 4" =c("F4", "FF4"),
-  "Cowpea Treatment 1" = c("T1"),
-  "Cowpea Treatment 2" = c("T2"),
-  "Cowpea Treatment 3" = c("T3"),
-  "Cowpea Treatment 4" = c("T4"),
-  "NSC Site J" = c("J"),
-  "NSC Site G" = c("G"),
-  "NSC Site F" = c("F")
-)
+ALS_R_EXPORT_HEADER = """# Dictionaries for interpreting sample ID codes
+# Generated from the AWQP Label Editor.
+# Paste this text over the existing dictionaries in the ALS Data Cleaning Tool.
 """
 
 
@@ -152,6 +81,8 @@ def zip_exports(tables: dict[str, pd.DataFrame]) -> bytes:
 
 
 def workbook_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
+    if importlib.util.find_spec("openpyxl") is None:
+        raise ModuleNotFoundError("openpyxl is required for Excel export.")
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         for name, frame in tables.items():
@@ -160,8 +91,84 @@ def workbook_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
     return buffer.getvalue()
 
 
+def excel_export_available() -> bool:
+    return importlib.util.find_spec("openpyxl") is not None
+
+
+def deep_copy_catalog(config: dict) -> dict:
+    return {
+        **config,
+        "locations": {key: dict(value) for key, value in config["locations"].items()},
+        "treatments": {key: dict(value) for key, value in config["treatments"].items()},
+    }
+
+
 def dated_filename(prefix: str, extension: str, filename_date: date | None = None) -> str:
     return f"{prefix}_{(filename_date or date.today()).strftime('%Y-%m-%d')}.{extension}"
+
+
+def format_r_vector(values: list[str]) -> str:
+    quoted = ['"' + value.replace('"', '\\"') + '"' for value in values]
+    if len(quoted) == 1:
+        return quoted[0]
+    return "c(" + ", ".join(quoted) + ")"
+
+
+def build_location_dict_entries(config: dict) -> list[tuple[str, list[str]]]:
+    entries: list[tuple[str, list[str]]] = []
+    for location_key, location in config["locations"].items():
+        tokens = get_entry_parser_tokens(location)
+        for treatment_key, treatment in config["treatments"].items():
+            if treatment_key == "blank":
+                continue
+            if get_treatment_parent_location(treatment) != location_key:
+                continue
+            tokens.extend(get_entry_parser_tokens(treatment))
+        tokens = [token for token in dict.fromkeys(tokens) if token]
+        if tokens:
+            entries.append((location["label"], tokens))
+    entries.append(("Method Blank", ["Method Blank"]))
+    entries.append(("Lab Control Sample", ["Lab Control Sample"]))
+    return entries
+
+
+def build_treatment_dict_entries(config: dict) -> list[tuple[str, list[str]]]:
+    grouped_tokens: dict[str, list[str]] = defaultdict(list)
+    for treatment_key, treatment in config["treatments"].items():
+        if treatment_key == "blank":
+            continue
+        grouped_tokens[get_treatment_r_label(treatment)].extend(get_entry_parser_tokens(treatment))
+
+    entries: list[tuple[str, list[str]]] = []
+    for label, tokens in grouped_tokens.items():
+        cleaned_tokens = [token for token in dict.fromkeys(tokens) if token]
+        if label and cleaned_tokens:
+            entries.append((label, cleaned_tokens))
+    return entries
+
+
+def build_als_r_dictionaries_text(config: dict) -> str:
+    location_lines = [
+        f'  "{label}" = {format_r_vector(tokens)}'
+        for label, tokens in build_location_dict_entries(config)
+    ]
+    treatment_lines = [
+        f'  "{label}" = {format_r_vector(tokens)}'
+        for label, tokens in build_treatment_dict_entries(config)
+    ]
+
+    sections = [
+        ALS_R_EXPORT_HEADER.strip(),
+        "# Keep ARDEC numeric-free until the R parser can safely handle ARDEC 2200.",
+        "location.dict <- list(",
+        ",\n".join(location_lines),
+        ")\n",
+        "# Kerbel and AVRC STAR share analytical treatment groups even though their sample-code tokens differ.",
+        "trt.dict <- list(",
+        ",\n".join(treatment_lines),
+        ")",
+    ]
+    return "\n".join(sections)
 
 
 def get_secret_value(secret_names: tuple[str, ...], source: Mapping[str, object]) -> str:
@@ -211,49 +218,92 @@ def count_active_catalog_entries(entries: dict[str, dict], *, exclude_key: str |
     )
 
 
-def render_catalog_table(title: str, entries: dict[str, dict]) -> None:
-    rows = [
+def make_location_editor_rows(config: dict) -> list[dict[str, object]]:
+    return [
         {
             "Key": key,
-            "ID": value["id"],
-            "Label": value["label"],
-            "Active": is_catalog_entry_active(value),
+            "ID": entry["id"],
+            "Label": entry["label"],
+            "Aliases": serialize_list_field(get_entry_list_field(entry, "aliases")),
+            "Legacy Aliases": serialize_list_field(get_entry_list_field(entry, "legacy_aliases")),
+            "Allow Blank": entry.get("allow_blank_treatment", True),
+            "Active": is_catalog_entry_active(entry),
+            "Legacy Only": is_catalog_entry_legacy_only(entry),
         }
-        for key, value in entries.items()
+        for key, entry in config["locations"].items()
     ]
-    st.subheader(title)
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
-def render_catalog_editor(
-    title: str,
-    config: dict,
-    config_path: Path,
-    *,
-    section_name: str,
-) -> None:
-    st.subheader(title)
-
-    editable_rows = []
-    system_rows = []
-    for key, value in config[section_name].items():
+def make_treatment_editor_rows(config: dict) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    editable_rows: list[dict[str, object]] = []
+    system_rows: list[dict[str, object]] = []
+    for key, entry in config["treatments"].items():
         row = {
             "Key": key,
-            "ID": value["id"],
-            "Label": value["label"],
-            "Active": is_catalog_entry_active(value),
+            "Parent Location": get_treatment_parent_location(entry),
+            "ID": entry["id"],
+            "Label": entry["label"],
+            "Treatment Group": get_treatment_group(entry),
+            "R Label": get_treatment_r_label(entry),
+            "Aliases": serialize_list_field(get_entry_list_field(entry, "aliases")),
+            "Legacy Aliases": serialize_list_field(get_entry_list_field(entry, "legacy_aliases")),
+            "Active": is_catalog_entry_active(entry),
+            "Legacy Only": is_catalog_entry_legacy_only(entry),
         }
-        if section_name == "treatments" and key == "blank":
+        if key == "blank":
             system_rows.append(row)
         else:
             editable_rows.append(row)
+    return editable_rows, system_rows
 
-    if not editable_rows:
-        st.info(f"No editable {section_name} entries are currently available.")
-        return
 
+def apply_location_row(target_config: dict, row: dict[str, object]) -> None:
+    aliases = parse_list_field("" if pd.isna(row["Aliases"]) else str(row["Aliases"]))
+    legacy_aliases = parse_list_field(
+        "" if pd.isna(row["Legacy Aliases"]) else str(row["Legacy Aliases"])
+    )
+    update_catalog_entry(
+        target_config,
+        section_name="locations",
+        entry_key=str(row["Key"]),
+        entry_id="" if pd.isna(row["ID"]) else str(row["ID"]).strip(),
+        label="" if pd.isna(row["Label"]) else str(row["Label"]).strip(),
+        active=bool(row["Active"]),
+        aliases=aliases,
+        legacy_aliases=legacy_aliases,
+        legacy_only=bool(row["Legacy Only"]),
+    )
+    if bool(row["Allow Blank"]):
+        target_config["locations"][str(row["Key"])].pop("allow_blank_treatment", None)
+    else:
+        target_config["locations"][str(row["Key"])]["allow_blank_treatment"] = False
+
+
+def apply_treatment_row(target_config: dict, row: dict[str, object]) -> None:
+    aliases = parse_list_field("" if pd.isna(row["Aliases"]) else str(row["Aliases"]))
+    legacy_aliases = parse_list_field(
+        "" if pd.isna(row["Legacy Aliases"]) else str(row["Legacy Aliases"])
+    )
+    update_catalog_entry(
+        target_config,
+        section_name="treatments",
+        entry_key=str(row["Key"]),
+        entry_id="" if pd.isna(row["ID"]) else str(row["ID"]).strip(),
+        label="" if pd.isna(row["Label"]) else str(row["Label"]).strip(),
+        active=bool(row["Active"]),
+        parent_location="" if pd.isna(row["Parent Location"]) else str(row["Parent Location"]).strip(),
+        aliases=aliases,
+        legacy_aliases=legacy_aliases,
+        r_label="" if pd.isna(row["R Label"]) else str(row["R Label"]).strip(),
+        treatment_group="" if pd.isna(row["Treatment Group"]) else str(row["Treatment Group"]).strip(),
+        legacy_only=bool(row["Legacy Only"]),
+    )
+
+
+def render_location_catalog_editor(config: dict, config_path: Path) -> None:
+    st.subheader("Locations")
     edited_frame = st.data_editor(
-        pd.DataFrame(editable_rows),
+        pd.DataFrame(make_location_editor_rows(config)),
         width="stretch",
         hide_index=True,
         disabled=["Key"],
@@ -261,50 +311,39 @@ def render_catalog_editor(
             "Key": st.column_config.TextColumn("Key"),
             "ID": st.column_config.TextColumn("ID"),
             "Label": st.column_config.TextColumn("Label"),
+            "Aliases": st.column_config.TextColumn("Aliases"),
+            "Legacy Aliases": st.column_config.TextColumn("Legacy Aliases"),
+            "Allow Blank": st.column_config.CheckboxColumn("Allow Blank"),
             "Active": st.column_config.CheckboxColumn("Active"),
+            "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
         },
-        key=f"{section_name}_catalog_editor",
+        key="locations_catalog_editor",
     )
 
-    if system_rows:
-        st.caption("System row")
-        st.dataframe(pd.DataFrame(system_rows), width="stretch", hide_index=True)
-
-    if st.button(
-        f"Save {title.lower()} table changes",
-        type="primary",
-        key=f"save_{section_name}_table",
-    ):
-        proposed_entries = edited_frame.to_dict("records")
-        candidate_config = {
-            "locations": {key: dict(value) for key, value in config["locations"].items()},
-            "treatments": {key: dict(value) for key, value in config["treatments"].items()},
-        }
-        for row in proposed_entries:
-            entry_id = "" if pd.isna(row["ID"]) else str(row["ID"]).strip()
-            entry_label = "" if pd.isna(row["Label"]) else str(row["Label"]).strip()
-            candidate_config[section_name][str(row["Key"])] = {
-                "id": entry_id,
-                "label": entry_label,
-                **({} if bool(row["Active"]) else {"active": False}),
-            }
+    if st.button("Save locations table changes", type="primary", key="save_locations_table"):
+        proposed_rows = edited_frame.to_dict("records")
+        candidate_config = deep_copy_catalog(config)
+        for row in proposed_rows:
+            apply_location_row(candidate_config, row)
 
         errors: list[str] = []
-
-        for row in proposed_entries:
-            entry_id = "" if pd.isna(row["ID"]) else str(row["ID"]).strip()
-            entry_label = "" if pd.isna(row["Label"]) else str(row["Label"]).strip()
+        for row in proposed_rows:
             row_errors = validate_catalog_entry(
                 candidate_config,
-                section_name=section_name,
-                entry_id=entry_id,
-                label=entry_label,
+                section_name="locations",
+                entry_id="" if pd.isna(row["ID"]) else str(row["ID"]).strip(),
+                label="" if pd.isna(row["Label"]) else str(row["Label"]).strip(),
                 existing_key=str(row["Key"]),
+                aliases=parse_list_field("" if pd.isna(row["Aliases"]) else str(row["Aliases"])),
+                legacy_aliases=parse_list_field(
+                    "" if pd.isna(row["Legacy Aliases"]) else str(row["Legacy Aliases"])
+                ),
+                legacy_only=bool(row["Legacy Only"]),
             )
             row_errors.extend(
                 update_catalog_status_errors(
                     candidate_config,
-                    section_name=section_name,
+                    section_name="locations",
                     entry_key=str(row["Key"]),
                     active=bool(row["Active"]),
                 )
@@ -317,24 +356,106 @@ def render_catalog_editor(
                 st.error(error)
             return
 
-        for row in proposed_entries:
-            entry_id = "" if pd.isna(row["ID"]) else str(row["ID"]).strip()
-            entry_label = "" if pd.isna(row["Label"]) else str(row["Label"]).strip()
-            update_catalog_entry(
-                config,
-                section_name=section_name,
-                entry_key=str(row["Key"]),
-                entry_id=entry_id,
-                label=entry_label,
-                active=bool(row["Active"]),
-            )
+        for row in proposed_rows:
+            apply_location_row(config, row)
 
         save_config(config_path, config)
-        st.success(f"{title} table saved.")
+        st.success("Locations table saved.")
         st.rerun()
 
 
+def render_treatment_catalog_editor(config: dict, config_path: Path) -> None:
+    st.subheader("Treatments")
+    editable_rows, system_rows = make_treatment_editor_rows(config)
+    edited_frame = st.data_editor(
+        pd.DataFrame(editable_rows),
+        width="stretch",
+        hide_index=True,
+        disabled=["Key"],
+        column_config={
+            "Key": st.column_config.TextColumn("Key"),
+            "Parent Location": st.column_config.SelectboxColumn(
+                "Parent Location",
+                options=list(config["locations"].keys()),
+            ),
+            "ID": st.column_config.TextColumn("ID"),
+            "Label": st.column_config.TextColumn("Label"),
+            "Treatment Group": st.column_config.TextColumn("Treatment Group"),
+            "R Label": st.column_config.TextColumn("R Label"),
+            "Aliases": st.column_config.TextColumn("Aliases"),
+            "Legacy Aliases": st.column_config.TextColumn("Legacy Aliases"),
+            "Active": st.column_config.CheckboxColumn("Active"),
+            "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
+        },
+        key="treatments_catalog_editor",
+    )
+
+    if system_rows:
+        st.caption("System row")
+        st.dataframe(pd.DataFrame(system_rows), width="stretch", hide_index=True)
+
+    if st.button("Save treatments table changes", type="primary", key="save_treatments_table"):
+        proposed_rows = edited_frame.to_dict("records")
+        candidate_config = deep_copy_catalog(config)
+        for row in proposed_rows:
+            apply_treatment_row(candidate_config, row)
+
+        errors: list[str] = []
+        for row in proposed_rows:
+            row_errors = validate_catalog_entry(
+                candidate_config,
+                section_name="treatments",
+                entry_id="" if pd.isna(row["ID"]) else str(row["ID"]).strip(),
+                label="" if pd.isna(row["Label"]) else str(row["Label"]).strip(),
+                existing_key=str(row["Key"]),
+                parent_location="" if pd.isna(row["Parent Location"]) else str(row["Parent Location"]).strip(),
+                aliases=parse_list_field("" if pd.isna(row["Aliases"]) else str(row["Aliases"])),
+                legacy_aliases=parse_list_field(
+                    "" if pd.isna(row["Legacy Aliases"]) else str(row["Legacy Aliases"])
+                ),
+                r_label="" if pd.isna(row["R Label"]) else str(row["R Label"]).strip(),
+                treatment_group="" if pd.isna(row["Treatment Group"]) else str(row["Treatment Group"]).strip(),
+                legacy_only=bool(row["Legacy Only"]),
+            )
+            row_errors.extend(
+                update_catalog_status_errors(
+                    candidate_config,
+                    section_name="treatments",
+                    entry_key=str(row["Key"]),
+                    active=bool(row["Active"]),
+                )
+            )
+            for error in row_errors:
+                errors.append(f"{row['Key']}: {error}")
+
+        if errors:
+            for error in dict.fromkeys(errors):
+                st.error(error)
+            return
+
+        for row in proposed_rows:
+            apply_treatment_row(config, row)
+
+        save_config(config_path, config)
+        st.success("Treatments table saved.")
+        st.rerun()
+
+
+def render_catalog_editor(
+    title: str,
+    config: dict,
+    config_path: Path,
+    *,
+    section_name: str,
+) -> None:
+    if section_name == "locations":
+        render_location_catalog_editor(config, config_path)
+        return
+    render_treatment_catalog_editor(config, config_path)
+
+
 def render_als_dictionary_export() -> None:
+    r_dictionary_text = build_als_r_dictionaries_text(CONFIG)
     st.subheader("ALS Data Cleaning Tool Dictionaries")
     st.markdown(
         """
@@ -347,12 +468,12 @@ def render_als_dictionary_export() -> None:
     )
     st.text_area(
         "R dictionary text to paste into the ALS Data Cleaning Tool",
-        value=ALS_R_DICTIONARIES_TEXT,
+        value=r_dictionary_text,
         height=900,
     )
     st.download_button(
         "Download R dictionaries",
-        data=ALS_R_DICTIONARIES_TEXT,
+        data=r_dictionary_text,
         file_name="als_data_cleaning_tool_dicts.R",
         mime="text/x-r-source",
     )
@@ -371,6 +492,20 @@ def update_catalog_status_errors(
     errors: list[str] = []
     if section_name == "treatments" and entry_key == "blank":
         errors.append("The `No treatment` entry must stay active.")
+    if section_name == "locations":
+        active_children = [
+            child_key
+            for child_key, child in config["treatments"].items()
+            if child_key != "blank"
+            and get_treatment_parent_location(child) == entry_key
+            and is_catalog_entry_active(child)
+        ]
+        if active_children:
+            errors.append(
+                "Deactivate or reassign active child treatments first: "
+                + ", ".join(active_children)
+                + "."
+            )
     if count_active_catalog_entries(config[section_name], exclude_key=entry_key) == 0:
         errors.append(f"At least one active {section_name} entry is required.")
     return errors
@@ -380,10 +515,9 @@ def render_admin_page(config: dict, config_path: Path) -> None:
     st.header("Label Editor")
     st.markdown(
         """
-        Use this page to add, correct, and retire canonical locations and treatments.
+        Use this page to manage canonical locations and their child treatments.
 
-        Add a location by itself, or save a location and its first treatment together.
-        Inactive entries are hidden from normal users but remain in the catalog for editor review.
+        Active entries are available in the label builder. Inactive and legacy-only entries remain visible here for historical compatibility and R export generation.
         """
     )
 
@@ -430,143 +564,114 @@ def render_admin_page(config: dict, config_path: Path) -> None:
 
     with current_catalog_tab:
         st.caption(
-            "These are the existing locations and treatments currently available in the app. Edit cells directly, then save the section you changed."
+            "Edit the canonical catalog directly here. Treatments now belong to parent locations, and only active entries appear in the label builder."
         )
         render_catalog_editor("Locations", config, config_path, section_name="locations")
         st.divider()
         render_catalog_editor("Treatments", config, config_path, section_name="treatments")
 
     with catalog_manager_tab:
-        st.subheader("Add Location and Optional Treatment")
-        st.caption(
-            "Use one save to add a new location by itself, or add a location and its first "
-            "treatment together. You can also attach a new treatment to an existing location context."
-        )
+        st.caption("Add new locations and treatments here. Treatments must be assigned to a parent location.")
+        add_location_tab, add_treatment_tab = st.tabs(["Add Location", "Add Treatment"])
 
-        active_location_keys = get_active_catalog_keys(config["locations"])
-        with st.form("catalog_manager_add_form"):
-            location_context = st.selectbox(
-                "Location context",
-                options=["__new__"] + active_location_keys,
-                format_func=lambda key: (
-                    "Add new location"
-                    if key == "__new__"
-                    else config["locations"][key]["label"]
-                ),
-                help="Pick an existing location when you only need to add a treatment for that site.",
-            )
+        with add_location_tab:
+            with st.form("add_location_form"):
+                location_id = st.text_input("Location ID code")
+                location_label = st.text_input("Location label")
+                location_aliases = st.text_input("Aliases (comma-separated, optional)")
+                location_legacy_aliases = st.text_input("Legacy aliases (comma-separated, optional)")
+                allow_blank_treatment = st.checkbox("Allow blank treatment", value=True)
+                legacy_only = st.checkbox("Legacy only", value=False)
+                active = st.checkbox("Active", value=not legacy_only)
+                save_location = st.form_submit_button("Save location", type="primary")
 
-            if location_context == "__new__":
-                location_id = st.text_input(
-                    "Location ID code (example: FF)",
-                    help=(
-                        "Short code used in sample IDs, such as `FF` for Fruita Fertilizer. "
-                        "Letters, numbers, and underscores only."
-                    ),
+            if save_location:
+                aliases = parse_list_field(location_aliases)
+                legacy_aliases = parse_list_field(location_legacy_aliases)
+                errors = validate_catalog_entry(
+                    config,
+                    section_name="locations",
+                    entry_id=location_id,
+                    label=location_label,
+                    aliases=aliases,
+                    legacy_aliases=legacy_aliases,
+                    legacy_only=legacy_only,
                 )
-                location_label = st.text_input(
-                    "Location label (example: Fruita Fertilizer)",
-                    help="Full location name shown to users in the app.",
-                )
-                if location_id.strip():
-                    suggested_key = next_available_key(
-                        config["locations"],
-                        normalize_key_fragment(location_id),
-                    )
-                    st.caption(f"New location key preview: `{suggested_key}`")
-            else:
-                location_id = ""
-                location_label = ""
-                st.caption(
-                    f"Selected location: `{config['locations'][location_context]['label']}`. "
-                    "Add a treatment below if this site needs one."
-                )
-
-            treatment_id = st.text_input(
-                "Treatment ID code (optional, example: F1)",
-                help=(
-                    "Short treatment code used in sample IDs, such as `F1` for Fruita F1. "
-                    "Leave blank if the location does not need a new treatment."
-                ),
-            )
-            treatment_label = st.text_input(
-                "Treatment label (optional, example: Fruita F1)",
-                help="Full treatment name shown to users in the app.",
-            )
-
-            if treatment_label.strip():
-                suggested_key = next_available_key(
-                    config["treatments"],
-                    normalize_key_fragment(treatment_label),
-                )
-                st.caption(f"New treatment key preview: `{suggested_key}`")
-
-            save_catalog_additions = st.form_submit_button(
-                "Save catalog changes",
-                type="primary",
-            )
-
-        if save_catalog_additions:
-            adding_location = location_context == "__new__"
-            adding_treatment = bool(treatment_id.strip() or treatment_label.strip())
-            errors: list[str] = []
-
-            if not adding_location and not adding_treatment:
-                errors.append("Choose `Add new location` or enter a treatment before saving.")
-            if adding_location:
-                errors.extend(
-                    validate_catalog_entry(
-                        config,
-                        section_name="locations",
-                        entry_id=location_id,
-                        label=location_label,
-                    )
-                )
-            if adding_treatment:
-                errors.extend(
-                    validate_catalog_entry(
-                        config,
-                        section_name="treatments",
-                        entry_id=treatment_id,
-                        label=treatment_label,
-                    )
-                )
-
-            if errors:
-                for error in dict.fromkeys(errors):
-                    st.error(error)
-            else:
-                messages: list[str] = []
-                location_context_label = (
-                    location_label.strip()
-                    if adding_location
-                    else config["locations"][location_context]["label"]
-                )
-                if adding_location:
+                if errors:
+                    for error in dict.fromkeys(errors):
+                        st.error(error)
+                else:
                     entry_key = append_catalog_entry(
                         config,
                         section_name="locations",
                         entry_id=location_id,
                         label=location_label,
+                        aliases=aliases,
+                        legacy_aliases=legacy_aliases,
+                        legacy_only=legacy_only,
+                        active=active,
                     )
-                    messages.append(
-                        f"Location `{location_label.strip()}` added as `{entry_key}`."
-                    )
-                if adding_treatment:
+                    if not allow_blank_treatment:
+                        config["locations"][entry_key]["allow_blank_treatment"] = False
+                    save_config(config_path, config)
+                    st.success(f"Location `{location_label.strip()}` added as `{entry_key}`.")
+                    st.rerun()
+
+        with add_treatment_tab:
+            location_options = list(config["locations"].keys())
+            with st.form("add_treatment_form"):
+                parent_location = st.selectbox(
+                    "Parent location",
+                    options=location_options,
+                    format_func=lambda key: f"{config['locations'][key]['label']} ({key})",
+                )
+                treatment_id = st.text_input("Treatment ID code")
+                treatment_label = st.text_input("Treatment label")
+                treatment_group = st.text_input("Treatment group (optional)")
+                r_label = st.text_input("R label (optional)")
+                treatment_aliases = st.text_input("Aliases (comma-separated, optional)")
+                treatment_legacy_aliases = st.text_input("Legacy aliases (comma-separated, optional)")
+                legacy_only = st.checkbox("Legacy only", value=False, key="new_treatment_legacy_only")
+                active = st.checkbox("Active", value=not legacy_only, key="new_treatment_active")
+                save_treatment = st.form_submit_button("Save treatment", type="primary")
+
+            if save_treatment:
+                aliases = parse_list_field(treatment_aliases)
+                legacy_aliases = parse_list_field(treatment_legacy_aliases)
+                errors = validate_catalog_entry(
+                    config,
+                    section_name="treatments",
+                    entry_id=treatment_id,
+                    label=treatment_label,
+                    parent_location=parent_location,
+                    aliases=aliases,
+                    legacy_aliases=legacy_aliases,
+                    r_label=r_label,
+                    treatment_group=treatment_group,
+                    legacy_only=legacy_only,
+                )
+                if errors:
+                    for error in dict.fromkeys(errors):
+                        st.error(error)
+                else:
                     entry_key = append_catalog_entry(
                         config,
                         section_name="treatments",
                         entry_id=treatment_id,
                         label=treatment_label,
+                        parent_location=parent_location,
+                        aliases=aliases,
+                        legacy_aliases=legacy_aliases,
+                        r_label=r_label,
+                        treatment_group=treatment_group,
+                        legacy_only=legacy_only,
+                        active=active,
                     )
-                    messages.append(
-                        f"Treatment `{treatment_label.strip()}` added as `{entry_key}` "
-                        f"for `{location_context_label}`."
+                    save_config(config_path, config)
+                    st.success(
+                        f"Treatment `{treatment_label.strip()}` added as `{entry_key}` for `{config['locations'][parent_location]['label']}`."
                     )
-
-                save_config(config_path, config)
-                st.success(" ".join(messages))
-                st.rerun()
+                    st.rerun()
 
     with als_export_tab:
         render_als_dictionary_export()
@@ -583,7 +688,7 @@ def render_guide() -> None:
             """
             **Basic workflow**
             1. Complete the sidebar session options.
-            2. Choose a location, treatment, event type, event number, and sample method.
+            2. Choose a location first, then choose from only the treatments assigned to that location.
             3. Choose the analytes to generate.
             4. Check `Include field duplicate` when the sample group has duplicates.
             5. Add the sample group, review the outputs, and download either an Excel workbook or a CSV ZIP.
@@ -623,10 +728,10 @@ def render_guide() -> None:
         st.markdown(
             """
             **Label Editor**
-            - Add canonical locations and treatments.
-            - Fix typos in IDs or user-facing labels.
+            - Manage canonical locations and location-scoped treatments.
+            - Set parent locations, treatment groups, aliases, and legacy-only flags.
             - Mark old entries inactive so they disappear from normal selection lists without deleting catalog history.
-            - Review and edit the full location and treatment tables in one place.
+            - Export live R dictionaries for the ALS Data Cleaning Tool from the current catalog.
             - This page is protected by a shared password set in Streamlit secrets or the app environment.
             - Regular users do not need this password.
             """
@@ -686,12 +791,15 @@ def render_season_list_builder() -> None:
             st.dataframe(frame, width="stretch", hide_index=True)
             st.caption("Sources: " + ", ".join(table_sources[name]))
 
-    st.download_button(
-        "Download combined Excel workbook",
-        data=workbook_bytes(combined_tables),
-        file_name=dated_filename("awqp_season_lists", "xlsx"),
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+    if excel_export_available():
+        st.download_button(
+            "Download combined Excel workbook",
+            data=workbook_bytes(combined_tables),
+            file_name=dated_filename("awqp_season_lists", "xlsx"),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    else:
+        st.warning("Excel export is unavailable because `openpyxl` is not installed in this environment.")
     st.download_button(
         "Download combined ZIP of CSVs",
         data=zip_exports(combined_tables),
@@ -714,10 +822,11 @@ if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
 
 ACTIVE_LOCATION_KEYS = get_active_catalog_keys(CONFIG["locations"])
-ACTIVE_TREATMENT_KEYS = get_active_catalog_keys(CONFIG["treatments"])
-DEFAULT_TREATMENT_KEYS = (
-    ["blank"] if "blank" in ACTIVE_TREATMENT_KEYS else ACTIVE_TREATMENT_KEYS[:1]
-)
+ACTIVE_TREATMENT_KEYS = [
+    key
+    for key, value in CONFIG["treatments"].items()
+    if key != "blank" and is_catalog_entry_active(value)
+]
 
 
 st.title("AWQP Label Maker")
@@ -780,12 +889,10 @@ elif page == "Season List Builder":
 elif page == "Label Editor":
     render_admin_page(CONFIG, CONFIG_PATH)
 else:
-    if not ACTIVE_LOCATION_KEYS or not ACTIVE_TREATMENT_KEYS:
+    if not ACTIVE_LOCATION_KEYS:
         missing_sections: list[str] = []
         if not ACTIVE_LOCATION_KEYS:
             missing_sections.append("locations")
-        if not ACTIVE_TREATMENT_KEYS:
-            missing_sections.append("treatments")
         st.error(
             "New sample groups cannot be added because there are no active "
             + " and ".join(missing_sections)
@@ -798,63 +905,88 @@ else:
             st.session_state.page_redirect = "Guide"
             st.rerun()
 
-        with st.form("add_group_form", clear_on_submit=False):
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                location_key = st.selectbox(
-                    "Location",
-                    options=ACTIVE_LOCATION_KEYS,
-                    format_func=lambda key: CONFIG["locations"][key]["label"],
-                )
-                treatment_keys = st.multiselect(
-                    "Treatment(s)",
-                    options=ACTIVE_TREATMENT_KEYS,
-                    default=DEFAULT_TREATMENT_KEYS,
-                    format_func=lambda key: CONFIG["treatments"][key]["label"],
-                    help="Select one or more treatments. Multiple selections create rows for each treatment.",
-                )
-                event_type_key = st.selectbox(
-                    "Event type (i.e., Point/Inflow/Outflow)",
-                    options=list(CONFIG["event_types"].keys()),
-                    format_func=lambda key: CONFIG["event_types"][key]["label"],
-                )
-            with c2:
-                method_keys = st.multiselect(
-                    "Sample method(s)",
-                    options=list(CONFIG["sample_methods"].keys()),
-                    default=["GB"],
-                    format_func=lambda key: CONFIG["sample_methods"][key]["label"],
-                    help="Select one or more methods. Multiple selections create rows for each method.",
-                )
-                event_number = st.selectbox(
-                    "Event number",
-                    options=CONFIG["event_numbers"],
-                    help="Non-storm events use 01-0X. Storm events use S1-SX.",
-                )
-                st.caption(
-                    f"Irr/Str will be set to `{default_irr_str(event_number)}` from the event number."
-                )
-            with c3:
-                include_duplicates = st.checkbox(
-                    "Include field duplicate",
-                    help="When checked, this sample group generates normal rows plus matching duplicate rows.",
-                )
-                analyte_keys = st.multiselect(
-                    "Analytes",
-                    options=list(CONFIG["analytes"].keys()),
-                    default=CONFIG["default_analytes"],
-                    format_func=lambda key: CONFIG["analytes"][key]["label"],
-                )
-                custom_comment = st.text_input(
-                    "Custom comment (optional)",
-                    help="If provided, this replaces the analyte's default comment for every generated row in this sample group.",
-                )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            location_key = st.selectbox(
+                "Location",
+                options=ACTIVE_LOCATION_KEYS,
+                format_func=lambda key: CONFIG["locations"][key]["label"],
+                key="builder_location_key",
+            )
+            location_treatment_keys = get_location_treatment_keys(CONFIG, location_key)
+            default_treatment_keys = (
+                ["blank"]
+                if "blank" in location_treatment_keys
+                else location_treatment_keys[:1]
+            )
+            current_treatment_selection = st.session_state.get("builder_treatment_keys", [])
+            normalized_treatments = [
+                key for key in current_treatment_selection if key in location_treatment_keys
+            ]
+            if not normalized_treatments:
+                normalized_treatments = default_treatment_keys
+            if normalized_treatments != current_treatment_selection:
+                st.session_state.builder_treatment_keys = normalized_treatments
+            treatment_keys = st.multiselect(
+                "Treatment(s)",
+                options=location_treatment_keys,
+                format_func=lambda key: CONFIG["treatments"][key]["label"],
+                help="Only treatments assigned to the selected location are shown here.",
+                key="builder_treatment_keys",
+            )
+            event_type_key = st.selectbox(
+                "Event type (i.e., Point/Inflow/Outflow)",
+                options=list(CONFIG["event_types"].keys()),
+                format_func=lambda key: CONFIG["event_types"][key]["label"],
+                key="builder_event_type_key",
+            )
+        with c2:
+            if "builder_method_keys" not in st.session_state:
+                st.session_state.builder_method_keys = ["GB"]
+            method_keys = st.multiselect(
+                "Sample method(s)",
+                options=list(CONFIG["sample_methods"].keys()),
+                format_func=lambda key: CONFIG["sample_methods"][key]["label"],
+                help="Select one or more methods. Multiple selections create rows for each method.",
+                key="builder_method_keys",
+            )
+            event_number = st.selectbox(
+                "Event number",
+                options=CONFIG["event_numbers"],
+                help="Non-storm events use 01-0X. Storm events use S1-SX.",
+                key="builder_event_number",
+            )
+            st.caption(
+                f"Irr/Str will be set to `{default_irr_str(event_number)}` from the event number."
+            )
+        with c3:
+            include_duplicates = st.checkbox(
+                "Include field duplicate",
+                help="When checked, this sample group generates normal rows plus matching duplicate rows.",
+                key="builder_include_duplicates",
+            )
+            if "builder_analyte_keys" not in st.session_state:
+                st.session_state.builder_analyte_keys = CONFIG["default_analytes"]
+            analyte_keys = st.multiselect(
+                "Analytes",
+                options=list(CONFIG["analytes"].keys()),
+                format_func=lambda key: CONFIG["analytes"][key]["label"],
+                key="builder_analyte_keys",
+            )
+            custom_comment = st.text_input(
+                "Custom comment (optional)",
+                help="If provided, this replaces the analyte's default comment for every generated row in this sample group.",
+                key="builder_custom_comment",
+            )
 
-            submitted = st.form_submit_button("Add group", type="primary")
+        submitted = st.button("Add group", type="primary", key="builder_add_group")
 
         if submitted:
+            valid_treatment_keys = set(get_location_treatment_keys(CONFIG, location_key))
             if not treatment_keys:
                 st.error("Choose at least one treatment before adding the sample group.")
+            elif any(treatment_key not in valid_treatment_keys for treatment_key in treatment_keys):
+                st.error("One or more selected treatments do not belong to the chosen location.")
             elif not method_keys:
                 st.error("Choose at least one sample method before adding the sample group.")
             elif not analyte_keys:
@@ -929,12 +1061,15 @@ else:
                 with tab:
                     st.dataframe(frame, width="stretch", hide_index=True)
 
-            st.download_button(
-                "Download Excel workbook",
-                data=workbook_bytes(tables),
-                file_name=dated_filename("awqp_label_outputs", "xlsx", collection_date),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
+            if excel_export_available():
+                st.download_button(
+                    "Download Excel workbook",
+                    data=workbook_bytes(tables),
+                    file_name=dated_filename("awqp_label_outputs", "xlsx", collection_date),
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            else:
+                st.warning("Excel export is unavailable because `openpyxl` is not installed in this environment.")
             st.download_button(
                 "Download ZIP of CSVs",
                 data=zip_exports(tables),

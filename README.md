@@ -15,7 +15,7 @@ This repository contains a Streamlit application for generating standardized wat
 
 The application allows users to input sampling metadata through a structured form and automatically generates formatted labels plus downloadable output files as either a multi-sheet Excel workbook or a ZIP bundle of CSVs.
 
-The frontend uses human-readable names for locations, treatments, and sampling choices. The app then converts those selections into the correct backend sample ID codes automatically, so users do not need to memorize or interpret AWQP label syntax.
+The frontend uses human-readable names for locations, treatments, and sampling choices. Treatments are assigned to parent locations, so once a user chooses a location, the app only offers treatments that belong to that site. The app then converts those selections into the correct backend sample ID codes automatically, so users do not need to memorize or interpret AWQP label syntax.
 
 This tool is intended to:
 
@@ -41,10 +41,12 @@ This tool is intended to:
 - Single Excel workbook export with multiple sheets for all generated outputs
 - ZIP export containing the same outputs as separate CSV files
 - Controlled vocabularies to prevent invalid entries
+- Location-scoped treatment selection so users only see valid treatments for the chosen site
 - Optional fields handled cleanly without breaking label format
 - Batch-oriented workflow so one user can build many sample groups in a single session
 - Built-in guide view for new users
 - Password-protected label editor for adding, correcting, and retiring locations and treatments
+- Live R dictionary export for the ALS Data Cleaning Tool
 - Human-readable frontend with hidden backend ID translation
 
 ---
@@ -73,7 +75,7 @@ BK-Location-Event#-Analyte
 ```
 awqp-label-maker/
 ├── app.py
-├── config/config.yaml
+├── config/config.json
 ├── utils/config_loader.py
 ├── utils/label_builder.py
 ├── requirements.txt
@@ -84,10 +86,12 @@ awqp-label-maker/
 
 ## Configuration
 
-All domain-specific definitions are stored in `config/config.yaml`, including:
+All domain-specific definitions are stored in `config/config.json`, including:
 
 - Canonical locations and IDs
-- Canonical treatments and IDs
+- Canonical treatments, IDs, and parent-location relationships
+- Legacy aliases used for backward-compatible R parsing
+- Optional treatment grouping metadata for the ALS Data Cleaning Tool export
 - Analyte codes and ALS requirements
 - Event types
 - Sample methods
@@ -95,7 +99,7 @@ All domain-specific definitions are stored in `config/config.yaml`, including:
 
 This design allows easy updates without modifying application code while keeping the user-facing interface readable and consistent.
 
-The app also includes a `Label Editor` page for adding locations, adding treatments, correcting typos, and marking old entries inactive from the UI. Inactive entries are hidden from standard user dropdowns but remain visible in the editor. The page is protected by a single shared password supplied through Streamlit secrets using either `admin_password` or `AWQP_ADMIN_PASSWORD`, or through the `AWQP_ADMIN_PASSWORD` environment variable.
+The app also includes a `Label Editor` page for managing locations, assigning treatments to parent locations, correcting typos, and marking old entries inactive from the UI. Inactive and legacy-only entries are hidden from standard user dropdowns but remain visible in the editor and in the generated R compatibility dictionaries. The page is protected by a single shared password supplied through Streamlit secrets using either `admin_password` or `AWQP_ADMIN_PASSWORD`, or through the `AWQP_ADMIN_PASSWORD` environment variable.
 
 ---
 
@@ -123,11 +127,21 @@ conda create -n awqp-label-maker python=3.11
 conda activate awqp-label-maker
 ```
 
+Or create the packaged conda environment directly:
+
+```bash
+conda env create -f environment.yml
+conda activate awqp-label-maker
+```
+
 ### 3. Install dependencies
 
 ```
 pip install -r requirements.txt
 ```
+
+If you already have an existing environment and see missing-module errors such as
+`yaml` or `openpyxl`, rerun the install command in that same environment.
 
 ### 4. Run the app
 
@@ -177,11 +191,12 @@ The existing label workflow is systematic, but it has historically required a sm
 - `For ALS Lab COC`: same schema as `Event`, but excludes in-house analytes such as `4`, `13`, and `14`
 - `Lab blank`: optional toggle; defaults to analytes `1`, `2`, and `10`, which matches the provided example workbook
 - `Custom comment`: if supplied, replaces the analyte's default comment for every generated row in that sample group
+- `ALS R Dicts`: generated from the current catalog so the Streamlit app and the ALS Data Cleaning Tool can stay aligned
 
 ### Notes
 
 - Dates export as `MM/DD/YYYY` strings rather than Excel serial numbers
-- The app is driven by [config/config.yaml](/Users/ajbrown/Documents/GitHub/awqp-label-maker/config/config.yaml); update that file to change IDs, analytes, or defaults without touching the app logic
+- The app is driven by [config/config.json](C:\Users\ansle\OneDrive\Documents\GitHub\awqp-label-maker\config\config.json); update that file to change IDs, analytes, or defaults without touching the app logic
 
 ### Example Event Output
 

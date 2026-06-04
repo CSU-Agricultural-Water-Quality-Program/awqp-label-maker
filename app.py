@@ -366,6 +366,14 @@ def render_flash_message() -> None:
         st.info(message)
 
 
+def mark_config_export_needed() -> None:
+    st.session_state.admin_export_needed = True
+
+
+def mark_config_exported() -> None:
+    st.session_state.admin_export_needed = False
+
+
 def validate_uploaded_catalog(config_data: object) -> list[str]:
     if not isinstance(config_data, dict):
         return ["Uploaded file must contain a JSON object."]
@@ -497,6 +505,7 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
             apply_location_row(config, row)
 
         save_config(config_path, config)
+        mark_config_export_needed()
         set_flash_message(
             "success",
             "Locations table changes saved. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
@@ -577,6 +586,7 @@ def render_treatment_catalog_editor(config: dict, config_path: Path) -> None:
             apply_treatment_row(config, row)
 
         save_config(config_path, config)
+        mark_config_export_needed()
         set_flash_message(
             "success",
             "Treatments table changes saved. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
@@ -699,12 +709,30 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             st.error("Incorrect password.")
         return
 
-    auth_cols = st.columns([5, 1])
-    auth_cols[0].success("Label Editor unlocked for this browser session.")
-    if auth_cols[1].button("Log out"):
+    if st.session_state.get("admin_catalog_ready", False):
+        auth_cols = st.columns([4, 2, 1])
+        auth_cols[0].success("Label Editor unlocked for this browser session.")
+        export_file_name = timestamped_filename("awqp_config", "json")
+        auth_cols[1].download_button(
+            "Download timestamped config export",
+            data=json.dumps(config, indent=2) + "\n",
+            file_name=export_file_name,
+            mime="application/json",
+            type="primary" if st.session_state.get("admin_export_needed", False) else "secondary",
+            help="Use this to back up the current catalog, commit it to GitHub, and upload it to SharePoint.",
+            on_click=mark_config_exported,
+        )
+        logout_clicked = auth_cols[2].button("Log out")
+    else:
+        auth_cols = st.columns([6, 1])
+        auth_cols[0].success("Label Editor unlocked for this browser session.")
+        logout_clicked = auth_cols[1].button("Log out")
+
+    if logout_clicked:
         st.session_state.admin_authenticated = False
         st.session_state.admin_catalog_ready = False
         st.session_state.admin_catalog_source = ""
+        st.session_state.admin_export_needed = False
         st.rerun()
 
     render_flash_message()
@@ -756,6 +784,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         config.update(uploaded_config)
                         save_config(config_path, config)
                         st.session_state.admin_catalog_ready = True
+                        st.session_state.admin_export_needed = False
                         if uploaded_timestamp is not None:
                             st.session_state.admin_catalog_source = (
                                 f"Uploaded file `{uploaded_config_file.name}` from "
@@ -776,6 +805,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             st.session_state.admin_catalog_source = (
                 f"Local repo config as of {LOCAL_CATALOG_REFERENCE_DATE} (emergency mode)"
             )
+            st.session_state.admin_export_needed = False
             set_flash_message(
                 "warning",
                 "Using the local repo catalog instead of the shared SharePoint config. This is not recommended except in an emergency.",
@@ -787,33 +817,25 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         )
         return
 
-    current_catalog_tab, catalog_manager_tab, als_export_tab = st.tabs(
-        ["Label Editor", "New Entry", "ALS R Dicts"]
+    if st.session_state.get("admin_export_needed", False):
+        st.warning(
+            "Catalog changes were saved in this session. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy."
+        )
+
+    if st.session_state.get("admin_catalog_source"):
+        st.info(f"Current editing source: {st.session_state['admin_catalog_source']}")
+
+    st.caption(
+        "After finishing edits, download the timestamped config export, commit/push it into the repo, and place it back into SharePoint."
+    )
+    st.caption(f"SharePoint destination: `{SHAREPOINT_CONFIG_PATH}`")
+    st.caption(
+        "The app still edits the local working file `config/config.json`, but the exported timestamped file is the one users should archive, commit to GitHub, and distribute through SharePoint."
     )
 
-    with current_catalog_tab:
-        st.caption(
-            "Edit the canonical catalog directly here. Treatments now belong to parent locations, and only active entries appear in the label builder."
-        )
-        if st.session_state.get("admin_catalog_source"):
-            st.info(f"Current editing source: {st.session_state['admin_catalog_source']}")
-        st.download_button(
-            "Download timestamped config export",
-            data=json.dumps(config, indent=2) + "\n",
-            file_name=timestamped_filename("awqp_config", "json"),
-            mime="application/json",
-            help="Use this to back up the current catalog, commit it to GitHub, and upload it to SharePoint.",
-        )
-        st.caption(
-            "After finishing edits, download this timestamped file, commit/push it into the repo, and place it back into SharePoint."
-        )
-        st.caption(f"SharePoint destination: `{SHAREPOINT_CONFIG_PATH}`")
-        st.caption(
-            "The app still edits the local working file `config/config.json`, but the exported timestamped file is the one users should archive, commit to GitHub, and distribute through SharePoint."
-        )
-        render_catalog_editor("Locations", config, config_path, section_name="locations")
-        st.divider()
-        render_catalog_editor("Treatments", config, config_path, section_name="treatments")
+    catalog_manager_tab, current_catalog_tab, als_export_tab = st.tabs(
+        ["New Entry", "Label Editor", "ALS R Dicts"]
+    )
 
     with catalog_manager_tab:
         st.caption(
@@ -956,6 +978,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                             )
 
                         save_config(config_path, candidate_config)
+                        mark_config_export_needed()
                         treatment_count = len(treatment_rows)
                         if treatment_count:
                             set_flash_message(
@@ -1029,11 +1052,20 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         active=active,
                     )
                     save_config(config_path, config)
+                    mark_config_export_needed()
                     set_flash_message(
                         "success",
                         f"Treatment `{treatment_label.strip()}` added as `{entry_key}` for `{config['locations'][parent_location]['label']}`. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                     )
                     st.rerun()
+
+    with current_catalog_tab:
+        st.caption(
+            "Edit the canonical catalog directly here. Treatments now belong to parent locations, and only active entries appear in the label builder."
+        )
+        render_catalog_editor("Locations", config, config_path, section_name="locations")
+        st.divider()
+        render_catalog_editor("Treatments", config, config_path, section_name="treatments")
 
     with als_export_tab:
         render_als_dictionary_export()

@@ -697,15 +697,6 @@ def update_catalog_status_errors(
 
 
 def render_admin_page(config: dict, config_path: Path) -> None:
-    st.header("Label Editor")
-    st.markdown(
-        """
-        Use this page to manage canonical locations and their child treatments.
-
-        Active entries are available in the label builder. Inactive and legacy-only entries remain visible here for historical compatibility and R export generation.
-        """
-    )
-
     admin_password = get_admin_password()
     if not admin_password:
         st.error(
@@ -742,7 +733,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         return
 
     if st.session_state.get("admin_catalog_ready", False):
-        auth_cols = st.columns([4, 2, 1])
+        auth_cols = st.columns([4, 2, 1, 1])
         auth_cols[0].success("Label Editor unlocked for this browser session.")
         export_file_name = timestamped_filename("awqp_config", "json")
         auth_cols[1].download_button(
@@ -754,11 +745,19 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             help="Use this to back up the current catalog, commit it to GitHub, and upload it to SharePoint.",
             on_click=mark_config_exported,
         )
-        logout_clicked = auth_cols[2].button("Log out")
+        if auth_cols[2].button("How To"):
+            st.session_state.guide_focus = "Label Editor"
+            st.session_state.page_redirect = "Guide"
+            st.rerun()
+        logout_clicked = auth_cols[3].button("Log out")
     else:
-        auth_cols = st.columns([6, 1])
+        auth_cols = st.columns([5, 1, 1])
         auth_cols[0].success("Label Editor unlocked for this browser session.")
-        logout_clicked = auth_cols[1].button("Log out")
+        if auth_cols[1].button("How To"):
+            st.session_state.guide_focus = "Label Editor"
+            st.session_state.page_redirect = "Guide"
+            st.rerun()
+        logout_clicked = auth_cols[2].button("Log out")
 
     if logout_clicked:
         st.session_state.admin_authenticated = False
@@ -855,42 +854,32 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         )
 
     if st.session_state.get("admin_catalog_source"):
-        st.info(f"Current editing source: {st.session_state['admin_catalog_source']}")
+        st.caption(f"Current editing source: {st.session_state['admin_catalog_source']}")
 
-    st.caption(
-        "After finishing edits, download the timestamped config export, commit/push it into the repo, and place it back into SharePoint."
-    )
-    st.caption(f"SharePoint destination: `{SHAREPOINT_CONFIG_PATH}`")
-    st.caption(
-        "The app still edits the local working file `config/config.json`, but the exported timestamped file is the one users should archive, commit to GitHub, and distribute through SharePoint."
-    )
+    with st.expander("GitHub / SharePoint handoff"):
+        st.markdown(
+            f"""
+            - After finishing edits, download the timestamped config export.
+            - Commit and push that exported file into the repo history.
+            - Place the same file back into SharePoint.
+            - SharePoint destination: `{SHAREPOINT_CONFIG_PATH}`
+            - The app still edits the local working file `config/config.json`, but the exported timestamped file is the one users should archive and distribute.
+            """
+        )
 
-    if "admin_main_section" not in st.session_state:
-        st.session_state.admin_main_section = "New Entry"
-    if "admin_new_entry_section" not in st.session_state:
-        st.session_state.admin_new_entry_section = "Add Location + Treatments"
-
-    admin_main_section = st.radio(
-        "Label Editor section",
-        options=["New Entry", "Label Editor", "ALS R Dicts"],
-        horizontal=True,
-        key="admin_main_section",
-        label_visibility="collapsed",
+    new_entry_tab, current_catalog_tab, als_export_tab = st.tabs(
+        ["New Entry", "Label Editor", "ALS R Dicts"]
     )
 
-    if admin_main_section == "New Entry":
+    with new_entry_tab:
         st.caption(
             "Add a new location with its treatments, or add a treatment to an existing location."
         )
-        new_entry_section = st.radio(
-            "New Entry section",
-            options=["Add Location + Treatments", "Add Treatment to Existing Location"],
-            horizontal=True,
-            key="admin_new_entry_section",
-            label_visibility="collapsed",
+        add_location_tab, add_treatment_tab = st.tabs(
+            ["Add Location + Treatments", "Add Treatment to Existing Location"]
         )
 
-        if new_entry_section == "Add Location + Treatments":
+        with add_location_tab:
             st.caption(
                 "Use this when creating a new site. If the site has treatments, add them here at the same time."
             )
@@ -1035,10 +1024,9 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                                 "success",
                                 f"Location `{location_label.strip()}` added as `{entry_key}`. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                             )
-                        st.session_state.admin_main_section = "Label Editor"
                         st.rerun()
 
-        else:
+        with add_treatment_tab:
             st.caption("Use this when adding a treatment to a location that already exists.")
             location_options = sorted(
                 config["locations"].keys(),
@@ -1110,10 +1098,9 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         "success",
                         f"Treatment `{treatment_label.strip()}` added as `{entry_key}` for `{config['locations'][parent_location]['label']}`. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                     )
-                    st.session_state.admin_main_section = "Label Editor"
                     st.rerun()
 
-    elif admin_main_section == "Label Editor":
+    with current_catalog_tab:
         st.caption(
             "Edit the canonical catalog directly here. Treatments now belong to parent locations, and only active entries appear in the label builder."
         )
@@ -1121,17 +1108,21 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         st.divider()
         render_catalog_editor("Treatments", config, config_path, section_name="treatments")
 
-    else:
+    with als_export_tab:
         render_als_dictionary_export()
 
 
 def render_guide() -> None:
     st.header("Guide")
-    label_tab, season_tab, admin_tab = st.tabs(
-        ["Label Builder", "Season List Builder", "Label Editor"]
-    )
+    guide_tab_labels = ["Label Builder", "Season List Builder", "Label Editor"]
+    guide_focus = st.session_state.pop("guide_focus", "")
+    if guide_focus in guide_tab_labels:
+        ordered_guide_tabs = [guide_focus] + [label for label in guide_tab_labels if label != guide_focus]
+    else:
+        ordered_guide_tabs = guide_tab_labels
+    guide_tabs = dict(zip(ordered_guide_tabs, st.tabs(ordered_guide_tabs)))
 
-    with label_tab:
+    with guide_tabs["Label Builder"]:
         st.markdown(
             """
             **Basic workflow**
@@ -1160,7 +1151,7 @@ def render_guide() -> None:
             """
         )
 
-    with season_tab:
+    with guide_tabs["Season List Builder"]:
         st.markdown(
             """
             **Season list builder**
@@ -1172,17 +1163,75 @@ def render_guide() -> None:
             """
         )
 
-    with admin_tab:
+    with guide_tabs["Label Editor"]:
         st.markdown(
             """
             **Label Editor**
-            - Manage canonical locations and location-scoped treatments.
-            - Set parent locations, treatment groups, aliases, and legacy-only flags.
-            - Mark old entries inactive so they disappear from normal selection lists without deleting catalog history.
-            - Export live R dictionaries for the ALS Data Cleaning Tool from the current catalog.
-            - This page is protected by a shared password set in Streamlit secrets or the app environment.
-            - AWQP users can find the shared password in `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt`.
-            - Regular users do not need this password.
+            Use this page to update the AWQP location and treatment catalog safely.
+
+            **To get started**
+            1. Get the shared password from:
+               `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt`
+            2. Open `Label Editor` and unlock it with that password.
+            3. Upload the current shared `config.json` before editing.
+            4. From there, choose whether you need to:
+               - add a new entry
+               - edit existing labels
+               - download updated ALS R dictionaries
+            5. After saving catalog changes, download the new timestamped config export.
+            6. Commit and push that export into GitHub.
+            7. Place the same export back into SharePoint at:
+               `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\config.json`
+
+            **What each section does**
+            - `New Entry`: add a new location with treatments, or add a treatment to an existing location.
+            - `Label Editor`: edit the current catalog tables directly.
+            - `ALS R Dicts`: copy or download the current R dictionary text for the ALS Data Cleaning Tool. This is an export step, not a place to edit the catalog.
+
+            **How to add a new entry**
+            1. Open the `New Entry` tab.
+            2. Use `Add Location + Treatments` if you are creating a brand-new site.
+            3. Enter the location ID and location label.
+            4. If the site has treatments, add them in the treatment table below.
+            5. If the site does not use treatments, check `Site has no treatments`.
+            6. Use `Add Treatment to Existing Location` only when the location already exists and you just need to add another treatment under it.
+            7. Click save.
+            8. After a successful save, verify the new entry appears in the `Label Editor` tables.
+
+            **How to edit existing labels**
+            1. Open the `Label Editor` tab.
+            2. Find the location or treatment row you want to change.
+            3. Edit the table cell directly.
+            4. Use `Active` to hide old entries from normal workflows without deleting their history.
+            5. Use `Legacy Only` for compatibility-only entries that should not appear in normal new-label workflows.
+            6. Save the locations table or treatments table.
+            7. After saving, confirm the change appears correctly in the catalog and in the Label Builder if it is an active entry.
+
+            **How to download ALS R dictionaries**
+            1. Open the `ALS R Dicts` tab.
+            2. Review the generated R dictionary text.
+            3. Copy it or download it as an `.R` file.
+            4. Paste that text into the ALS Data Cleaning Tool where the existing dictionaries live.
+            5. Do this whenever locations or treatments change and you want the R tool to stay compatible.
+
+            **Glossary**
+            - `Location ID`: the short code used in sample IDs, such as `K` or `SC`.
+            - `Location label`: the human-readable site name, such as `Kerbel` or `Stagecoach`.
+            - `Treatment ID`: the short treatment code used in sample IDs, such as `CT1` or `SCISC`.
+            - `Treatment label`: the human-readable treatment name.
+            - `Parent location`: the location that a treatment belongs to.
+            - `Aliases`: alternate current tokens that should still match the same entry.
+            - `Legacy aliases`: older tokens kept only so historic data can still be interpreted.
+            - `Legacy only`: an entry kept for backward compatibility that should not appear in normal new-label workflows.
+            - `Active`: whether the entry appears in normal builder and editor workflows.
+            - `Treatment group`: an optional analysis grouping, such as `CT`, `ST`, or `MT`.
+            - `R label`: the label exported into the ALS Data Cleaning Tool dictionaries.
+            - `No treatment`: the blank treatment option for sites that do not use explicit treatment IDs.
+
+            **Important behavior**
+            - The runtime app always works from `config/config.json`.
+            - Timestamped `awqp_config_...json` files are for upload, download, Git history, and SharePoint handoff.
+            - The app does not currently write directly to SharePoint or GitHub.
             """
         )
 

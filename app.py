@@ -252,7 +252,7 @@ def count_active_catalog_entries(entries: dict[str, dict], *, exclude_key: str |
 
 
 def make_location_editor_rows(config: dict) -> list[dict[str, object]]:
-    return [
+    rows = [
         {
             "Key": key,
             "ID": entry["id"],
@@ -265,6 +265,14 @@ def make_location_editor_rows(config: dict) -> list[dict[str, object]]:
         }
         for key, entry in config["locations"].items()
     ]
+    return sorted(
+        rows,
+        key=lambda row: (
+            str(row["Label"]).casefold(),
+            str(row["ID"]).casefold(),
+            str(row["Key"]).casefold(),
+        ),
+    )
 
 
 def make_treatment_editor_rows(config: dict) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
@@ -287,6 +295,22 @@ def make_treatment_editor_rows(config: dict) -> tuple[list[dict[str, object]], l
             system_rows.append(row)
         else:
             editable_rows.append(row)
+    editable_rows = sorted(
+        editable_rows,
+        key=lambda row: (
+            str(row["Label"]).casefold(),
+            str(row["ID"]).casefold(),
+            str(row["Key"]).casefold(),
+        ),
+    )
+    system_rows = sorted(
+        system_rows,
+        key=lambda row: (
+            str(row["Label"]).casefold(),
+            str(row["ID"]).casefold(),
+            str(row["Key"]).casefold(),
+        ),
+    )
     return editable_rows, system_rows
 
 
@@ -516,6 +540,14 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
 def render_treatment_catalog_editor(config: dict, config_path: Path) -> None:
     st.subheader("Treatments")
     editable_rows, system_rows = make_treatment_editor_rows(config)
+    location_options = sorted(
+        config["locations"].keys(),
+        key=lambda key: (
+            str(config["locations"][key]["label"]).casefold(),
+            str(config["locations"][key]["id"]).casefold(),
+            str(key).casefold(),
+        ),
+    )
     edited_frame = st.data_editor(
         pd.DataFrame(editable_rows),
         width="stretch",
@@ -525,7 +557,7 @@ def render_treatment_catalog_editor(config: dict, config_path: Path) -> None:
             "Key": st.column_config.TextColumn("Key"),
             "Parent Location": st.column_config.SelectboxColumn(
                 "Parent Location",
-                options=list(config["locations"].keys()),
+                options=location_options,
             ),
             "ID": st.column_config.TextColumn("ID"),
             "Label": st.column_config.TextColumn("Label"),
@@ -833,19 +865,32 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         "The app still edits the local working file `config/config.json`, but the exported timestamped file is the one users should archive, commit to GitHub, and distribute through SharePoint."
     )
 
-    catalog_manager_tab, current_catalog_tab, als_export_tab = st.tabs(
-        ["New Entry", "Label Editor", "ALS R Dicts"]
+    if "admin_main_section" not in st.session_state:
+        st.session_state.admin_main_section = "New Entry"
+    if "admin_new_entry_section" not in st.session_state:
+        st.session_state.admin_new_entry_section = "Add Location + Treatments"
+
+    admin_main_section = st.radio(
+        "Label Editor section",
+        options=["New Entry", "Label Editor", "ALS R Dicts"],
+        horizontal=True,
+        key="admin_main_section",
+        label_visibility="collapsed",
     )
 
-    with catalog_manager_tab:
+    if admin_main_section == "New Entry":
         st.caption(
             "Add a new location with its treatments, or add a treatment to an existing location."
         )
-        add_location_tab, add_treatment_tab = st.tabs(
-            ["Add Location + Treatments", "Add Treatment to Existing Location"]
+        new_entry_section = st.radio(
+            "New Entry section",
+            options=["Add Location + Treatments", "Add Treatment to Existing Location"],
+            horizontal=True,
+            key="admin_new_entry_section",
+            label_visibility="collapsed",
         )
 
-        with add_location_tab:
+        if new_entry_section == "Add Location + Treatments":
             st.caption(
                 "Use this when creating a new site. If the site has treatments, add them here at the same time."
             )
@@ -860,7 +905,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                 )
                 site_has_no_treatments = st.checkbox(
                     "Site has no treatments",
-                    value=True,
+                    value=False,
                     help="Leave this checked for sites that should use only `No treatment` in the Label Builder.",
                 )
                 allow_blank_treatment = st.checkbox(
@@ -990,11 +1035,19 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                                 "success",
                                 f"Location `{location_label.strip()}` added as `{entry_key}`. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                             )
+                        st.session_state.admin_main_section = "Label Editor"
                         st.rerun()
 
-        with add_treatment_tab:
+        else:
             st.caption("Use this when adding a treatment to a location that already exists.")
-            location_options = list(config["locations"].keys())
+            location_options = sorted(
+                config["locations"].keys(),
+                key=lambda key: (
+                    str(config["locations"][key]["label"]).casefold(),
+                    str(config["locations"][key]["id"]).casefold(),
+                    str(key).casefold(),
+                ),
+            )
             with st.form("add_treatment_form"):
                 parent_location = st.selectbox(
                     "Parent location (example: Kerbel (K))",
@@ -1057,9 +1110,10 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         "success",
                         f"Treatment `{treatment_label.strip()}` added as `{entry_key}` for `{config['locations'][parent_location]['label']}`. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                     )
+                    st.session_state.admin_main_section = "Label Editor"
                     st.rerun()
 
-    with current_catalog_tab:
+    elif admin_main_section == "Label Editor":
         st.caption(
             "Edit the canonical catalog directly here. Treatments now belong to parent locations, and only active entries appear in the label builder."
         )
@@ -1067,7 +1121,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         st.divider()
         render_catalog_editor("Treatments", config, config_path, section_name="treatments")
 
-    with als_export_tab:
+    else:
         render_als_dictionary_export()
 
 

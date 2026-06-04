@@ -6,8 +6,6 @@ The live source of truth is:
 
 - [config/config.json](C:/Users/ansle/OneDrive/Documents/GitHub/awqp-label-maker/config/config.json)
 
-The app still has YAML loader fallback support in [utils/config_loader.py](C:/Users/ansle/OneDrive/Documents/GitHub/awqp-label-maker/utils/config_loader.py), but the active catalog format is JSON, not YAML.
-
 ## Status
 
 This policy is no longer just a draft concept. The following parts are already implemented in the app:

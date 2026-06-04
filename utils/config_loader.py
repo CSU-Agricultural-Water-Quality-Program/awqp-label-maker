@@ -8,31 +8,18 @@ from pathlib import Path
 def load_config(path: str | Path) -> dict:
     config_path = Path(path)
     with config_path.open("r", encoding="utf-8") as handle:
-        if config_path.suffix.lower() == ".json":
-            return json.load(handle)
-        try:
-            import yaml  # type: ignore
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                "PyYAML is required to load YAML configs. Convert the catalog to JSON or install PyYAML."
-            ) from exc
-        return yaml.safe_load(handle)
+        if config_path.suffix.lower() != ".json":
+            raise ValueError("Only JSON config files are supported.")
+        return json.load(handle)
 
 
 def save_config(path: str | Path, config: dict) -> None:
     config_path = Path(path)
     with config_path.open("w", encoding="utf-8") as handle:
-        if config_path.suffix.lower() == ".json":
-            json.dump(config, handle, indent=2)
-            handle.write("\n")
-            return
-        try:
-            import yaml  # type: ignore
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                "PyYAML is required to save YAML configs. Save to JSON or install PyYAML."
-            ) from exc
-        yaml.safe_dump(config, handle, sort_keys=False, allow_unicode=False)
+        if config_path.suffix.lower() != ".json":
+            raise ValueError("Only JSON config files are supported.")
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
 
 
 def is_catalog_entry_active(entry: dict) -> bool:

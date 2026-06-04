@@ -127,13 +127,6 @@ conda create -n awqp-label-maker python=3.11
 conda activate awqp-label-maker
 ```
 
-Or create the packaged conda environment directly:
-
-```bash
-conda env create -f environment.yml
-conda activate awqp-label-maker
-```
-
 ### 3. Install dependencies
 
 ```
@@ -141,7 +134,7 @@ pip install -r requirements.txt
 ```
 
 If you already have an existing environment and see missing-module errors such as
-`yaml` or `openpyxl`, rerun the install command in that same environment.
+`openpyxl`, rerun the install command in that same environment.
 
 ### 4. Run the app
 

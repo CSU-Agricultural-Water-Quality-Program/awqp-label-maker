@@ -185,6 +185,11 @@
       "legacy_aliases": [],
       "active": false,
       "legacy_only": true
+    },
+    "TY": {
+      "id": "TY",
+      "label": "Knott Livestock",
+      "allow_blank_treatment": false
     }
   },
   "treatments": {
@@ -718,6 +723,24 @@
       "r_label": "Fire 2",
       "active": false,
       "legacy_only": true
+    },
+    "OAK": {
+      "id": "OAK",
+      "label": "Ty at Oak Creek",
+      "parent_location": "TY",
+      "r_label": "Oak Creek"
+    },
+    "TROUT": {
+      "id": "TROUT",
+      "label": "Ty at Trout Creek Out",
+      "parent_location": "TY",
+      "r_label": "Trout Creek Out"
+    },
+    "UPPER": {
+      "id": "UPPER",
+      "label": "Ty at Trout Creek Upper",
+      "parent_location": "TY",
+      "r_label": "Trout Creek Upper"
     }
   },
   "event_types": {

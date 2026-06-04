@@ -3,11 +3,13 @@ from __future__ import annotations
 import hmac
 import importlib.util
 import io
+import json
 import os
+import re
 import zipfile
 from collections import defaultdict
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -52,6 +54,11 @@ PASSWORD_HELP_PATH = (
     r"D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of "
     r"Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt"
 )
+SHAREPOINT_CONFIG_PATH = (
+    r"D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of "
+    r"Field Monitoring and Data\AWQP Label Maker Tool\config.json"
+)
+LOCAL_CATALOG_REFERENCE_DATE = "June 4, 2026"
 CONFIG = load_config(CONFIG_PATH)
 AWQP_HOME_URL = "https://agsci.colostate.edu/waterquality/"
 AWQP_LOGO_URL = (
@@ -109,6 +116,28 @@ def deep_copy_catalog(config: dict) -> dict:
 
 def dated_filename(prefix: str, extension: str, filename_date: date | None = None) -> str:
     return f"{prefix}_{(filename_date or date.today()).strftime('%Y-%m-%d')}.{extension}"
+
+
+def timestamped_filename(prefix: str, extension: str, moment: datetime | None = None) -> str:
+    return f"{prefix}_{(moment or datetime.now()).strftime('%Y-%m-%d_%H-%M-%S')}.{extension}"
+
+
+def parse_config_export_timestamp(filename: str) -> datetime | None:
+    match = re.fullmatch(
+        r"(?:awqp_config|config)_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})\.json",
+        filename.strip(),
+    )
+    if not match:
+        return None
+    try:
+        return datetime.strptime(f"{match.group(1)}_{match.group(2)}", "%Y-%m-%d_%H-%M-%S")
+    except ValueError:
+        return None
+
+
+def format_config_timestamp(moment: datetime) -> str:
+    hour = moment.strftime("%I").lstrip("0") or "0"
+    return f"{moment.strftime('%B')} {moment.day}, {moment.year} at {hour}:{moment.strftime('%M:%S %p')}"
 
 
 def format_r_vector(values: list[str]) -> str:
@@ -313,6 +342,63 @@ def apply_location_row(target_config: dict, row: dict[str, object]) -> None:
     legacy_aliases = parse_list_field(
         "" if pd.isna(row["Legacy Aliases"]) else str(row["Legacy Aliases"])
     )
+
+
+def set_flash_message(level: str, message: str) -> None:
+    st.session_state.admin_flash = {"level": level, "message": message}
+
+
+def render_flash_message() -> None:
+    flash = st.session_state.pop("admin_flash", None)
+    if not flash:
+        return
+    level = flash.get("level", "info")
+    message = str(flash.get("message", "")).strip()
+    if not message:
+        return
+    if level == "success":
+        st.success(message)
+    elif level == "warning":
+        st.warning(message)
+    elif level == "error":
+        st.error(message)
+    else:
+        st.info(message)
+
+
+def validate_uploaded_catalog(config_data: object) -> list[str]:
+    if not isinstance(config_data, dict):
+        return ["Uploaded file must contain a JSON object."]
+
+    required_top_keys = [
+        "locations",
+        "treatments",
+        "event_types",
+        "sample_methods",
+        "duplicates",
+        "event_numbers",
+        "analytes",
+        "default_analytes",
+    ]
+    errors: list[str] = []
+    for key in required_top_keys:
+        if key not in config_data:
+            errors.append(f"Uploaded config is missing top-level key `{key}`.")
+
+    if errors:
+        return errors
+
+    if not isinstance(config_data["locations"], dict):
+        errors.append("`locations` must be a JSON object.")
+    if not isinstance(config_data["treatments"], dict):
+        errors.append("`treatments` must be a JSON object.")
+    if errors:
+        return errors
+
+    if "blank" not in config_data["treatments"]:
+        errors.append("Uploaded config must include the special `blank` treatment entry.")
+
+    return errors
     update_catalog_entry(
         target_config,
         section_name="locations",
@@ -411,7 +497,10 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
             apply_location_row(config, row)
 
         save_config(config_path, config)
-        st.success("Locations table saved.")
+        set_flash_message(
+            "success",
+            "Locations table changes saved. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
+        )
         st.rerun()
 
 
@@ -488,7 +577,10 @@ def render_treatment_catalog_editor(config: dict, config_path: Path) -> None:
             apply_treatment_row(config, row)
 
         save_config(config_path, config)
-        st.success("Treatments table saved.")
+        set_flash_message(
+            "success",
+            "Treatments table changes saved. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
+        )
         st.rerun()
 
 
@@ -611,7 +703,89 @@ def render_admin_page(config: dict, config_path: Path) -> None:
     auth_cols[0].success("Label Editor unlocked for this browser session.")
     if auth_cols[1].button("Log out"):
         st.session_state.admin_authenticated = False
+        st.session_state.admin_catalog_ready = False
+        st.session_state.admin_catalog_source = ""
         st.rerun()
+
+    render_flash_message()
+
+    if not st.session_state.get("admin_catalog_ready", False):
+        st.subheader("Load Current Catalog Before Editing")
+        st.info(
+            "Upload the current shared `config.json` before editing so you are working from the latest AWQP catalog."
+        )
+        st.caption(f"SharePoint catalog path: `{SHAREPOINT_CONFIG_PATH}`")
+        uploaded_config_file = st.file_uploader(
+            "Upload current config.json",
+            type=["json"],
+            key="admin_config_upload",
+            help="Open the shared SharePoint folder or use the latest timestamped AWQP config export, then upload it here before editing.",
+        )
+        if uploaded_config_file is not None:
+            uploaded_timestamp = parse_config_export_timestamp(uploaded_config_file.name)
+            if uploaded_timestamp is not None:
+                st.info(
+                    "Uploaded file: "
+                    f"`{uploaded_config_file.name}` from {format_config_timestamp(uploaded_timestamp)}."
+                )
+            else:
+                st.info(
+                    f"Uploaded file: `{uploaded_config_file.name}`. No export timestamp was found in the filename."
+                )
+        upload_col, emergency_col = st.columns(2)
+        use_uploaded_config = upload_col.button("Use uploaded config", type="primary")
+        use_local_catalog = emergency_col.button(
+            f"Use local {LOCAL_CATALOG_REFERENCE_DATE} catalog"
+        )
+
+        if use_uploaded_config:
+            if uploaded_config_file is None:
+                st.warning("Upload the current SharePoint `config.json` first.")
+            else:
+                try:
+                    uploaded_config = json.loads(uploaded_config_file.getvalue().decode("utf-8"))
+                except Exception as exc:
+                    st.error(f"Could not read uploaded JSON: {exc}")
+                else:
+                    upload_errors = validate_uploaded_catalog(uploaded_config)
+                    if upload_errors:
+                        for error in upload_errors:
+                            st.error(error)
+                    else:
+                        config.clear()
+                        config.update(uploaded_config)
+                        save_config(config_path, config)
+                        st.session_state.admin_catalog_ready = True
+                        if uploaded_timestamp is not None:
+                            st.session_state.admin_catalog_source = (
+                                f"Uploaded file `{uploaded_config_file.name}` from "
+                                f"{format_config_timestamp(uploaded_timestamp)}"
+                            )
+                        else:
+                            st.session_state.admin_catalog_source = (
+                                f"Uploaded file `{uploaded_config_file.name}`"
+                            )
+                        set_flash_message(
+                            "success",
+                            "Uploaded config.json loaded successfully. You can now edit the catalog.",
+                        )
+                        st.rerun()
+
+        if use_local_catalog:
+            st.session_state.admin_catalog_ready = True
+            st.session_state.admin_catalog_source = (
+                f"Local repo config as of {LOCAL_CATALOG_REFERENCE_DATE} (emergency mode)"
+            )
+            set_flash_message(
+                "warning",
+                "Using the local repo catalog instead of the shared SharePoint config. This is not recommended except in an emergency.",
+            )
+            st.rerun()
+
+        st.warning(
+            f"Emergency option: you may continue with the local repo catalog as of {LOCAL_CATALOG_REFERENCE_DATE}, but this is not recommended unless the shared file is temporarily unavailable."
+        )
+        return
 
     current_catalog_tab, catalog_manager_tab, als_export_tab = st.tabs(
         ["Label Editor", "New Entry", "ALS R Dicts"]
@@ -620,6 +794,22 @@ def render_admin_page(config: dict, config_path: Path) -> None:
     with current_catalog_tab:
         st.caption(
             "Edit the canonical catalog directly here. Treatments now belong to parent locations, and only active entries appear in the label builder."
+        )
+        if st.session_state.get("admin_catalog_source"):
+            st.info(f"Current editing source: {st.session_state['admin_catalog_source']}")
+        st.download_button(
+            "Download timestamped config export",
+            data=json.dumps(config, indent=2) + "\n",
+            file_name=timestamped_filename("awqp_config", "json"),
+            mime="application/json",
+            help="Use this to back up the current catalog, commit it to GitHub, and upload it to SharePoint.",
+        )
+        st.caption(
+            "After finishing edits, download this timestamped file, commit/push it into the repo, and place it back into SharePoint."
+        )
+        st.caption(f"SharePoint destination: `{SHAREPOINT_CONFIG_PATH}`")
+        st.caption(
+            "The app still edits the local working file `config/config.json`, but the exported timestamped file is the one users should archive, commit to GitHub, and distribute through SharePoint."
         )
         render_catalog_editor("Locations", config, config_path, section_name="locations")
         st.divider()
@@ -768,14 +958,16 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         save_config(config_path, candidate_config)
                         treatment_count = len(treatment_rows)
                         if treatment_count:
-                            st.success(
-                                f"Location `{location_label.strip()}` added as `{entry_key}` with {treatment_count} treatment(s)."
+                            set_flash_message(
+                                "success",
+                                f"Location `{location_label.strip()}` added as `{entry_key}` with {treatment_count} treatment(s). Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                             )
                         else:
-                            st.success(
-                                f"Location `{location_label.strip()}` added as `{entry_key}`."
+                            set_flash_message(
+                                "success",
+                                f"Location `{location_label.strip()}` added as `{entry_key}`. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                             )
-                    st.rerun()
+                        st.rerun()
 
         with add_treatment_tab:
             st.caption("Use this when adding a treatment to a location that already exists.")
@@ -837,8 +1029,9 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         active=active,
                     )
                     save_config(config_path, config)
-                    st.success(
-                        f"Treatment `{treatment_label.strip()}` added as `{entry_key}` for `{config['locations'][parent_location]['label']}`."
+                    set_flash_message(
+                        "success",
+                        f"Treatment `{treatment_label.strip()}` added as `{entry_key}` for `{config['locations'][parent_location]['label']}`. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
                     )
                     st.rerun()
 

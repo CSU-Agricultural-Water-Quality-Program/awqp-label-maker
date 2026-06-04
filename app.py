@@ -48,6 +48,10 @@ st.set_page_config(
 
 
 CONFIG_PATH = Path(__file__).parent / "config" / "config.json"
+PASSWORD_HELP_PATH = (
+    r"D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of "
+    r"Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt"
+)
 CONFIG = load_config(CONFIG_PATH)
 AWQP_HOME_URL = "https://agsci.colostate.edu/waterquality/"
 AWQP_LOGO_URL = (
@@ -257,6 +261,53 @@ def make_treatment_editor_rows(config: dict) -> tuple[list[dict[str, object]], l
     return editable_rows, system_rows
 
 
+def make_new_treatment_seed_rows() -> list[dict[str, object]]:
+    return [
+        {
+            "ID": "",
+            "Label": "",
+            "Treatment Group": "",
+            "R Label": "",
+            "Aliases": "",
+            "Legacy Aliases": "",
+            "Legacy Only": False,
+            "Active": True,
+        }
+    ]
+
+
+def normalize_new_treatment_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    normalized_rows: list[dict[str, object]] = []
+    for row in rows:
+        normalized_row = {
+            "ID": "" if pd.isna(row.get("ID", "")) else str(row.get("ID", "")).strip(),
+            "Label": "" if pd.isna(row.get("Label", "")) else str(row.get("Label", "")).strip(),
+            "Treatment Group": (
+                ""
+                if pd.isna(row.get("Treatment Group", ""))
+                else str(row.get("Treatment Group", "")).strip()
+            ),
+            "R Label": (
+                "" if pd.isna(row.get("R Label", "")) else str(row.get("R Label", "")).strip()
+            ),
+            "Aliases": "" if pd.isna(row.get("Aliases", "")) else str(row.get("Aliases", "")).strip(),
+            "Legacy Aliases": (
+                ""
+                if pd.isna(row.get("Legacy Aliases", ""))
+                else str(row.get("Legacy Aliases", "")).strip()
+            ),
+            "Legacy Only": bool(row.get("Legacy Only", False)),
+            "Active": bool(row.get("Active", True)),
+        }
+        has_values = any(
+            normalized_row[field]
+            for field in ("ID", "Label", "Treatment Group", "R Label", "Aliases", "Legacy Aliases")
+        )
+        if has_values:
+            normalized_rows.append(normalized_row)
+    return normalized_rows
+
+
 def apply_location_row(target_config: dict, row: dict[str, object]) -> None:
     aliases = parse_list_field("" if pd.isna(row["Aliases"]) else str(row["Aliases"]))
     legacy_aliases = parse_list_field(
@@ -313,7 +364,7 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
             "Label": st.column_config.TextColumn("Label"),
             "Aliases": st.column_config.TextColumn("Aliases"),
             "Legacy Aliases": st.column_config.TextColumn("Legacy Aliases"),
-            "Allow Blank": st.column_config.CheckboxColumn("Allow Blank"),
+            "Allow Blank": st.column_config.CheckboxColumn("Allow No treatment"),
             "Active": st.column_config.CheckboxColumn("Active"),
             "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
         },
@@ -541,6 +592,10 @@ def render_admin_page(config: dict, config_path: Path) -> None:
 
     if not st.session_state.get("admin_authenticated", False):
         st.info("This page is protected by a shared password.")
+        st.caption(
+            "AWQP users can find the shared password in the SharePoint text file at "
+            f"`{PASSWORD_HELP_PATH}`."
+        )
         with st.form("admin_login_form"):
             shared_password = st.text_input("Shared Label Editor password", type="password")
             unlock = st.form_submit_button("Unlock Label Editor", type="primary")
@@ -571,16 +626,55 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         render_catalog_editor("Treatments", config, config_path, section_name="treatments")
 
     with catalog_manager_tab:
-        st.caption("Add new locations and treatments here. Treatments must be assigned to a parent location.")
-        add_location_tab, add_treatment_tab = st.tabs(["Add Location", "Add Treatment"])
+        st.caption(
+            "Add a new location with its treatments, or add a treatment to an existing location."
+        )
+        add_location_tab, add_treatment_tab = st.tabs(
+            ["Add Location + Treatments", "Add Treatment to Existing Location"]
+        )
 
         with add_location_tab:
+            st.caption(
+                "Use this when creating a new site. If the site has treatments, add them here at the same time."
+            )
             with st.form("add_location_form"):
                 location_id = st.text_input("Location ID code")
                 location_label = st.text_input("Location label")
                 location_aliases = st.text_input("Aliases (comma-separated, optional)")
                 location_legacy_aliases = st.text_input("Legacy aliases (comma-separated, optional)")
-                allow_blank_treatment = st.checkbox("Allow blank treatment", value=True)
+                site_has_no_treatments = st.checkbox(
+                    "Site has no treatments",
+                    value=True,
+                    help="Leave this checked for sites that should use only `No treatment` in the Label Builder.",
+                )
+                allow_blank_treatment = False
+                location_treatment_rows: list[dict[str, object]] = []
+                if not site_has_no_treatments:
+                    allow_blank_treatment = st.checkbox(
+                        "Also allow `No treatment` for this site",
+                        value=False,
+                        help="Use this for sites that have explicit treatments but still sometimes need a `No treatment` option.",
+                    )
+                    st.caption(
+                        "Add one or more treatments for this new location. Leave unused rows blank."
+                    )
+                    location_treatment_rows = st.data_editor(
+                        pd.DataFrame(make_new_treatment_seed_rows()),
+                        width="stretch",
+                        hide_index=True,
+                        num_rows="dynamic",
+                        column_config={
+                            "ID": st.column_config.TextColumn("Treatment ID"),
+                            "Label": st.column_config.TextColumn("Treatment Label"),
+                            "Treatment Group": st.column_config.TextColumn("Treatment Group"),
+                            "R Label": st.column_config.TextColumn("R Label"),
+                            "Aliases": st.column_config.TextColumn("Aliases"),
+                            "Legacy Aliases": st.column_config.TextColumn("Legacy Aliases"),
+                            "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
+                            "Active": st.column_config.CheckboxColumn("Active"),
+                        },
+                        key="new_location_treatments_editor",
+                    ).to_dict("records")
                 legacy_only = st.checkbox("Legacy only", value=False)
                 active = st.checkbox("Active", value=not legacy_only)
                 save_location = st.form_submit_button("Save location", type="primary")
@@ -588,6 +682,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             if save_location:
                 aliases = parse_list_field(location_aliases)
                 legacy_aliases = parse_list_field(location_legacy_aliases)
+                treatment_rows = normalize_new_treatment_rows(location_treatment_rows)
                 errors = validate_catalog_entry(
                     config,
                     section_name="locations",
@@ -597,12 +692,17 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                     legacy_aliases=legacy_aliases,
                     legacy_only=legacy_only,
                 )
+                if not site_has_no_treatments and not treatment_rows:
+                    errors.append(
+                        "Add at least one treatment for this site, or check `Site has no treatments`."
+                    )
                 if errors:
                     for error in dict.fromkeys(errors):
                         st.error(error)
                 else:
+                    candidate_config = deep_copy_catalog(config)
                     entry_key = append_catalog_entry(
-                        config,
+                        candidate_config,
                         section_name="locations",
                         entry_id=location_id,
                         label=location_label,
@@ -611,13 +711,59 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         legacy_only=legacy_only,
                         active=active,
                     )
-                    if not allow_blank_treatment:
-                        config["locations"][entry_key]["allow_blank_treatment"] = False
-                    save_config(config_path, config)
-                    st.success(f"Location `{location_label.strip()}` added as `{entry_key}`.")
+                    if not site_has_no_treatments and not allow_blank_treatment:
+                        candidate_config["locations"][entry_key]["allow_blank_treatment"] = False
+
+                    treatment_errors: list[str] = []
+                    for row in treatment_rows:
+                        row_errors = validate_catalog_entry(
+                            candidate_config,
+                            section_name="treatments",
+                            entry_id=row["ID"],
+                            label=row["Label"],
+                            parent_location=entry_key,
+                            aliases=parse_list_field(row["Aliases"]),
+                            legacy_aliases=parse_list_field(row["Legacy Aliases"]),
+                            r_label=row["R Label"],
+                            treatment_group=row["Treatment Group"],
+                            legacy_only=bool(row["Legacy Only"]),
+                        )
+                        for error in row_errors:
+                            treatment_errors.append(f"{row['ID'] or row['Label'] or 'New treatment'}: {error}")
+
+                    if treatment_errors:
+                        for error in dict.fromkeys(treatment_errors):
+                            st.error(error)
+                    else:
+                        for row in treatment_rows:
+                            append_catalog_entry(
+                                candidate_config,
+                                section_name="treatments",
+                                entry_id=row["ID"],
+                                label=row["Label"],
+                                parent_location=entry_key,
+                                aliases=parse_list_field(row["Aliases"]),
+                                legacy_aliases=parse_list_field(row["Legacy Aliases"]),
+                                r_label=row["R Label"],
+                                treatment_group=row["Treatment Group"],
+                                legacy_only=bool(row["Legacy Only"]),
+                                active=bool(row["Active"]),
+                            )
+
+                        save_config(config_path, candidate_config)
+                        treatment_count = len(treatment_rows)
+                        if treatment_count:
+                            st.success(
+                                f"Location `{location_label.strip()}` added as `{entry_key}` with {treatment_count} treatment(s)."
+                            )
+                        else:
+                            st.success(
+                                f"Location `{location_label.strip()}` added as `{entry_key}`."
+                            )
                     st.rerun()
 
         with add_treatment_tab:
+            st.caption("Use this when adding a treatment to a location that already exists.")
             location_options = list(config["locations"].keys())
             with st.form("add_treatment_form"):
                 parent_location = st.selectbox(
@@ -733,6 +879,7 @@ def render_guide() -> None:
             - Mark old entries inactive so they disappear from normal selection lists without deleting catalog history.
             - Export live R dictionaries for the ALS Data Cleaning Tool from the current catalog.
             - This page is protected by a shared password set in Streamlit secrets or the app environment.
+            - AWQP users can find the shared password in `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt`.
             - Regular users do not need this password.
             """
         )

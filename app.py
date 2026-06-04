@@ -638,43 +638,54 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                 "Use this when creating a new site. If the site has treatments, add them here at the same time."
             )
             with st.form("add_location_form"):
-                location_id = st.text_input("Location ID code")
-                location_label = st.text_input("Location label")
-                location_aliases = st.text_input("Aliases (comma-separated, optional)")
-                location_legacy_aliases = st.text_input("Legacy aliases (comma-separated, optional)")
+                location_id = st.text_input("Location ID code (example: K)")
+                location_label = st.text_input("Location label (example: Kerbel)")
+                location_aliases = st.text_input(
+                    "Aliases (comma-separated, optional; example: KERB)"
+                )
+                location_legacy_aliases = st.text_input(
+                    "Legacy aliases (comma-separated, optional; example: KBI, INF)"
+                )
                 site_has_no_treatments = st.checkbox(
                     "Site has no treatments",
                     value=True,
                     help="Leave this checked for sites that should use only `No treatment` in the Label Builder.",
                 )
-                allow_blank_treatment = False
-                location_treatment_rows: list[dict[str, object]] = []
-                if not site_has_no_treatments:
-                    allow_blank_treatment = st.checkbox(
-                        "Also allow `No treatment` for this site",
-                        value=False,
-                        help="Use this for sites that have explicit treatments but still sometimes need a `No treatment` option.",
-                    )
-                    st.caption(
-                        "Add one or more treatments for this new location. Leave unused rows blank."
-                    )
-                    location_treatment_rows = st.data_editor(
-                        pd.DataFrame(make_new_treatment_seed_rows()),
-                        width="stretch",
-                        hide_index=True,
-                        num_rows="dynamic",
-                        column_config={
-                            "ID": st.column_config.TextColumn("Treatment ID"),
-                            "Label": st.column_config.TextColumn("Treatment Label"),
-                            "Treatment Group": st.column_config.TextColumn("Treatment Group"),
-                            "R Label": st.column_config.TextColumn("R Label"),
-                            "Aliases": st.column_config.TextColumn("Aliases"),
-                            "Legacy Aliases": st.column_config.TextColumn("Legacy Aliases"),
-                            "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
-                            "Active": st.column_config.CheckboxColumn("Active"),
-                        },
-                        key="new_location_treatments_editor",
-                    ).to_dict("records")
+                allow_blank_treatment = st.checkbox(
+                    "Also allow `No treatment` for this site",
+                    value=False,
+                    help="Use this only for sites that have explicit treatments but still sometimes need a `No treatment` option.",
+                )
+                st.caption(
+                    "Add treatments below when the site has them. If the site has no treatments, leave these rows blank."
+                )
+                location_treatment_rows = st.data_editor(
+                    pd.DataFrame(make_new_treatment_seed_rows()),
+                    width="stretch",
+                    hide_index=True,
+                    num_rows="dynamic",
+                    column_config={
+                        "ID": st.column_config.TextColumn("Treatment ID (example: CT)"),
+                        "Label": st.column_config.TextColumn(
+                            "Treatment Label (example: Conventional Tillage)"
+                        ),
+                        "Treatment Group": st.column_config.TextColumn(
+                            "Treatment Group (optional; example: CT)"
+                        ),
+                        "R Label": st.column_config.TextColumn(
+                            "R Label (optional; example: Conventional Tillage)"
+                        ),
+                        "Aliases": st.column_config.TextColumn(
+                            "Aliases (optional; example: CONV)"
+                        ),
+                        "Legacy Aliases": st.column_config.TextColumn(
+                            "Legacy Aliases (optional; example: CT_OLD)"
+                        ),
+                        "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
+                        "Active": st.column_config.CheckboxColumn("Active"),
+                    },
+                    key="new_location_treatments_editor",
+                ).to_dict("records")
                 legacy_only = st.checkbox("Legacy only", value=False)
                 active = st.checkbox("Active", value=not legacy_only)
                 save_location = st.form_submit_button("Save location", type="primary")
@@ -695,6 +706,10 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                 if not site_has_no_treatments and not treatment_rows:
                     errors.append(
                         "Add at least one treatment for this site, or check `Site has no treatments`."
+                    )
+                if site_has_no_treatments and treatment_rows:
+                    errors.append(
+                        "This site is marked as having no treatments. Clear the treatment rows or uncheck `Site has no treatments`."
                     )
                 if errors:
                     for error in dict.fromkeys(errors):
@@ -767,16 +782,24 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             location_options = list(config["locations"].keys())
             with st.form("add_treatment_form"):
                 parent_location = st.selectbox(
-                    "Parent location",
+                    "Parent location (example: Kerbel (K))",
                     options=location_options,
                     format_func=lambda key: f"{config['locations'][key]['label']} ({key})",
                 )
-                treatment_id = st.text_input("Treatment ID code")
-                treatment_label = st.text_input("Treatment label")
-                treatment_group = st.text_input("Treatment group (optional)")
-                r_label = st.text_input("R label (optional)")
-                treatment_aliases = st.text_input("Aliases (comma-separated, optional)")
-                treatment_legacy_aliases = st.text_input("Legacy aliases (comma-separated, optional)")
+                treatment_id = st.text_input("Treatment ID code (example: CT)")
+                treatment_label = st.text_input(
+                    "Treatment label (example: Conventional Tillage)"
+                )
+                treatment_group = st.text_input("Treatment group (optional; example: CT)")
+                r_label = st.text_input(
+                    "R label (optional; example: Conventional Tillage)"
+                )
+                treatment_aliases = st.text_input(
+                    "Aliases (comma-separated, optional; example: CONV)"
+                )
+                treatment_legacy_aliases = st.text_input(
+                    "Legacy aliases (comma-separated, optional; example: CT_OLD)"
+                )
                 legacy_only = st.checkbox("Legacy only", value=False, key="new_treatment_legacy_only")
                 active = st.checkbox("Active", value=not legacy_only, key="new_treatment_active")
                 save_treatment = st.form_submit_button("Save treatment", type="primary")

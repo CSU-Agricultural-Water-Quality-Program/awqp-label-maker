@@ -140,6 +140,13 @@ def format_config_timestamp(moment: datetime) -> str:
     return f"{moment.strftime('%B')} {moment.day}, {moment.year} at {hour}:{moment.strftime('%M:%S %p')}"
 
 
+def format_treatment_display_label(config: dict, treatment_key: str) -> str:
+    label = str(config["treatments"][treatment_key]["label"])
+    if treatment_key == "blank":
+        return f"{label} (i.e., IN/OT only)"
+    return label
+
+
 def format_r_vector(values: list[str]) -> str:
     quoted = ['"' + value.replace('"', '\\"') + '"' for value in values]
     if len(quoted) == 1:
@@ -1428,7 +1435,7 @@ else:
             treatment_keys = st.multiselect(
                 "Treatment(s)",
                 options=location_treatment_keys,
-                format_func=lambda key: CONFIG["treatments"][key]["label"],
+                format_func=lambda key: format_treatment_display_label(CONFIG, key),
                 help="Only treatments assigned to the selected location are shown here.",
                 key="builder_treatment_keys",
             )
@@ -1458,6 +1465,8 @@ else:
                 f"Irr/Str will be set to `{default_irr_str(event_number)}` from the event number."
             )
         with c3:
+            if "builder_include_duplicates" not in st.session_state:
+                st.session_state.builder_include_duplicates = True
             include_duplicates = st.checkbox(
                 "Include field duplicate",
                 help="When checked, this sample group generates normal rows plus matching duplicate rows.",

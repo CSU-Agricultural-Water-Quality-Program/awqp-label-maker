@@ -31,8 +31,7 @@
       "id": "AV",
       "label": "AVRC Star",
       "aliases": [],
-      "legacy_aliases": [],
-      "allow_blank_treatment": false
+      "legacy_aliases": []
     },
     "COW": {
       "id": "COW",

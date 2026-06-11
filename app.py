@@ -38,6 +38,8 @@ from utils.label_builder import (
     build_output_tables,
     empty_plan,
     get_group_duplicate_keys,
+    get_group_bottle_row_count,
+    get_plan_bottle_row_count,
     remove_group_from_plan,
 )
 from utils.table_appender import append_uploaded_tables
@@ -65,6 +67,7 @@ AWQP_LOGO_URL = (
     "https://agsci.colostate.edu/waterquality/wp-content/uploads/sites/160/2024/05/"
     "AWQP_horizontalhighres.png"
 )
+LOOM_TUTORIAL_URL = "https://www.loom.com/share/5d0a7e3052ca45a8ad07c3ff3cb2a7ed"
 ALS_R_EXPORT_HEADER = """# Dictionaries for interpreting sample ID codes
 # Generated from the AWQP Label Editor.
 # Paste this text over the existing dictionaries in the ALS Data Cleaning Tool.
@@ -713,6 +716,10 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         )
         return
 
+    st.info(
+        f"Watch the Label Editor tutorial video on Loom: [Open tutorial video]({LOOM_TUTORIAL_URL})"
+    )
+
     legacy_conflicts = find_cross_section_conflicts(config)
     if legacy_conflicts:
         st.warning(
@@ -1176,6 +1183,10 @@ def render_guide() -> None:
             **Label Editor**
             Use this page to update the AWQP location and treatment catalog safely.
 
+            **Tutorial video**
+            - Watch the Loom walkthrough before editing the catalog:
+              [AWQP Label Maker tutorial video](https://www.loom.com/share/5d0a7e3052ca45a8ad07c3ff3cb2a7ed)
+
             **To get started**
             1. Get the shared password from:
                `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt`
@@ -1520,10 +1531,12 @@ else:
         for index, group in enumerate(groups):
             combination_count = len(group["treatment_keys"]) * len(group["method_keys"])
             duplicate_count = len(get_group_duplicate_keys(group, CONFIG))
+            bottle_row_count = get_group_bottle_row_count(group, CONFIG)
             projected_row_count = combination_count * len(group["analyte_keys"]) * duplicate_count
             duplicate_label = "yes" if duplicate_count > 1 else "no"
             summary = (
                 f"{CONFIG['locations'][group['location_key']]['label']} | "
+                f"{bottle_row_count} bottle row(s) | "
                 f"{combination_count} treatment/method combination(s) | "
                 f"{len(group['analyte_keys'])} analytes | "
                 f"{projected_row_count} generated sample row(s)"
@@ -1554,6 +1567,21 @@ else:
             for error in session_errors:
                 st.caption(error)
         else:
+            bottle_row_count = get_plan_bottle_row_count(
+                st.session_state.sample_plan,
+                CONFIG,
+                include_lab_blank=include_lab_blank,
+            )
+            st.markdown(
+                f"""
+                <div style="background-color: #eef6ea; border: 1px solid #7aa95c; border-radius: 0.75rem; padding: 1rem 1.25rem; margin: 1rem 0 1.25rem 0;">
+                  <div style="font-size: 0.9rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: #355724;">Bottle setup summary</div>
+                  <div style="font-size: 2rem; font-weight: 700; color: #1f3b12; line-height: 1.1; margin-top: 0.25rem;">{bottle_row_count} bottle row(s) needed</div>
+                  <div style="font-size: 0.95rem; color: #355724; margin-top: 0.35rem;">Includes every treatment/method sample row and {'1 lab blank row' if include_lab_blank else 'no lab blank row'}.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             tables = build_output_tables(
                 st.session_state.sample_plan,
                 CONFIG,

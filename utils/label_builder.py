@@ -146,6 +146,26 @@ def get_group_duplicate_keys(group: dict, config: dict) -> list[str]:
     return ["blank", *duplicate_keys[:1]]
 
 
+def get_group_bottle_row_count(group: dict, config: dict) -> int:
+    return (
+        len(group["treatment_keys"])
+        * len(group["method_keys"])
+        * len(get_group_duplicate_keys(group, config))
+    )
+
+
+def get_plan_bottle_row_count(
+    plan: dict,
+    config: dict,
+    *,
+    include_lab_blank: bool,
+) -> int:
+    bottle_rows = sum(get_group_bottle_row_count(group, config) for group in plan["groups"])
+    if include_lab_blank and plan["groups"]:
+        bottle_rows += 1
+    return bottle_rows
+
+
 def collect_rows(
     plan: dict,
     config: dict,

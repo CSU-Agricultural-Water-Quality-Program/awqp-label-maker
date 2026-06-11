@@ -812,8 +812,8 @@
   "analytes": {
     "1": {
       "id": "1",
-      "label": "NO3+NO2 / OP / TDS",
-      "analysis": "NO3+NO2/OP*/TDS",
+      "label": "NO3/NO2 / OP / TDS",
+      "analysis": "NO3/NO2/OP*/TDS",
       "analyses_code": "A,B,G",
       "preserved": "No",
       "volume_ml": 500,
@@ -965,6 +965,18 @@
       "label_suffix": "",
       "exclude_from_als": true,
       "include_in_blank": false
+    },
+    "15": {
+      "id": "1",
+      "label": "NO3/NO2 / OP / TDS / TSS",
+      "analysis": "NO3/NO2/OP*/TDS/TSS",
+      "analyses_code": "A,B,G,E",
+      "preserved": "No",
+      "volume_ml": 500,
+      "comment": "",
+      "label_suffix": "",
+      "exclude_from_als": false,
+      "include_in_blank": true
     }
   },
   "default_analytes": [

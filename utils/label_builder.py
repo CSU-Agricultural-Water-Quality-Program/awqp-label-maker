@@ -166,6 +166,23 @@ def get_plan_bottle_row_count(
     return bottle_rows
 
 
+def get_blank_analyte_keys(plan: dict, config: dict) -> list[str]:
+    selected_keys: list[str] = []
+    for group in plan["groups"]:
+        for analyte_key in group["analyte_keys"]:
+            if analyte_key not in selected_keys:
+                selected_keys.append(analyte_key)
+
+    if selected_keys:
+        return selected_keys
+
+    return [
+        analyte_key
+        for analyte_key, analyte in config["analytes"].items()
+        if analyte.get("include_in_blank")
+    ]
+
+
 def collect_rows(
     plan: dict,
     config: dict,
@@ -214,9 +231,8 @@ def collect_rows(
         event_number = plan["groups"][0]["event_number"]
         blank_prefix = f"BK-{config['locations'][blank_location_key]['id']}-{event_number}"
         irr_str = plan["groups"][0]["irrigation_or_storm"]
-        for analyte in config["analytes"].values():
-            if not analyte.get("include_in_blank"):
-                continue
+        for analyte_key in get_blank_analyte_keys(plan, config):
+            analyte = config["analytes"][analyte_key]
             sample_id = f"{blank_prefix}-{analyte['id']}"
             rows.append(
                 SampleRow(

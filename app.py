@@ -716,10 +716,6 @@ def render_admin_page(config: dict, config_path: Path) -> None:
         )
         return
 
-    st.info(
-        f"Watch the Label Editor tutorial video on Loom: [Open tutorial video]({LOOM_TUTORIAL_URL})"
-    )
-
     legacy_conflicts = find_cross_section_conflicts(config)
     if legacy_conflicts:
         st.warning(
@@ -1183,10 +1179,6 @@ def render_guide() -> None:
             **Label Editor**
             Use this page to update the AWQP location and treatment catalog safely.
 
-            **Tutorial video**
-            - Watch the Loom walkthrough before editing the catalog:
-              [AWQP Label Maker tutorial video](https://www.loom.com/share/5d0a7e3052ca45a8ad07c3ff3cb2a7ed)
-
             **To get started**
             1. Get the shared password from:
                `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt`
@@ -1415,6 +1407,9 @@ else:
             + ". Use Label Editor to reactivate the catalog."
         )
     else:
+        st.info(
+            f"Watch the AWQP Label Maker tutorial video on Loom: [Open tutorial video]({LOOM_TUTORIAL_URL})"
+        )
         header_cols = st.columns([6, 1])
         header_cols[0].subheader("Add Sample Group")
         if header_cols[1].button("Guide"):
@@ -1620,6 +1615,6 @@ else:
             - `Event` output matches the workbook's `Event` tab schema.
             - `For ALS Lab COC` excludes analytes marked `exclude_from_als`.
             - Label cells append preservative text on a second line when required.
-            - Lab blank rows default to analytes `1`, `2`, and `10`, matching the example workbook.
+            - Lab blank rows use the analytes selected across the current batch.
             """
         )

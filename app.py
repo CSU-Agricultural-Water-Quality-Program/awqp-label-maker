@@ -36,6 +36,7 @@ from utils.config_loader import (
 from utils.label_builder import (
     add_group_to_plan,
     build_output_tables,
+    clear_plan,
     empty_plan,
     get_group_duplicate_keys,
     get_group_bottle_row_count,
@@ -107,6 +108,22 @@ def workbook_bytes(tables: dict[str, pd.DataFrame]) -> bytes:
 
 def excel_export_available() -> bool:
     return importlib.util.find_spec("openpyxl") is not None
+
+
+def find_duplicate_analyte_ids(config: dict, analyte_keys: list[str]) -> dict[str, list[str]]:
+    analyte_ids: dict[str, list[str]] = defaultdict(list)
+    for analyte_key in analyte_keys:
+        analyte_id = str(config["analytes"][analyte_key]["id"]).strip()
+        analyte_ids[analyte_id].append(analyte_key)
+    return {
+        analyte_id: keys
+        for analyte_id, keys in analyte_ids.items()
+        if analyte_id and len(keys) > 1
+    }
+
+
+def analyte_sets_match(existing_keys: list[str], new_keys: list[str]) -> bool:
+    return set(existing_keys) == set(new_keys)
 
 
 def deep_copy_catalog(config: dict) -> dict:
@@ -1175,7 +1192,7 @@ def render_guide() -> None:
 
     with guide_tabs["Label Editor"]:
         st.markdown(
-            """
+            r"""
             **Label Editor**
             Use this page to update the AWQP location and treatment catalog safely.
 
@@ -1484,6 +1501,7 @@ else:
                 "Analytes",
                 options=list(CONFIG["analytes"].keys()),
                 format_func=lambda key: CONFIG["analytes"][key]["label"],
+                help="Do not select analytes that share the same sample ID suffix in the same group.",
                 key="builder_analyte_keys",
             )
             custom_comment = st.text_input(
@@ -1504,6 +1522,27 @@ else:
                 st.error("Choose at least one sample method before adding the sample group.")
             elif not analyte_keys:
                 st.error("Choose at least one analyte before adding the sample group.")
+            elif duplicate_analyte_ids := find_duplicate_analyte_ids(CONFIG, analyte_keys):
+                duplicate_messages = []
+                for analyte_id, duplicate_keys in duplicate_analyte_ids.items():
+                    duplicate_labels = ", ".join(
+                        CONFIG["analytes"][duplicate_key]["label"] for duplicate_key in duplicate_keys
+                    )
+                    duplicate_messages.append(f"`-{analyte_id}`: {duplicate_labels}")
+                st.error(
+                    "Choose only one analyte for each sample ID suffix. Conflicts found for "
+                    + "; ".join(duplicate_messages)
+                    + "."
+                )
+            elif st.session_state.sample_plan["groups"] and not analyte_sets_match(
+                st.session_state.sample_plan["groups"][0]["analyte_keys"],
+                analyte_keys,
+            ):
+                st.error(
+                    "All sample groups in one batch must use the same analytes because the app generates "
+                    "one shared lab blank for the batch. Remove the existing groups or clear the batch "
+                    "before starting a different analyte set."
+                )
             else:
                 add_group_to_plan(
                     st.session_state.sample_plan,
@@ -1522,7 +1561,11 @@ else:
 
     groups = st.session_state.sample_plan["groups"]
     if groups:
-        st.subheader("Sample Groups in Batch")
+        batch_header_cols = st.columns([6, 1])
+        batch_header_cols[0].subheader("Sample Groups in Batch")
+        if batch_header_cols[1].button("Clear batch", key="clear-sample-batch"):
+            clear_plan(st.session_state.sample_plan)
+            st.rerun()
         for index, group in enumerate(groups):
             combination_count = len(group["treatment_keys"]) * len(group["method_keys"])
             duplicate_count = len(get_group_duplicate_keys(group, CONFIG))

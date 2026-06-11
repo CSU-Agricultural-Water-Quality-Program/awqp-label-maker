@@ -115,6 +115,10 @@ def remove_group_from_plan(plan: dict, index: int) -> None:
     plan["groups"].pop(index)
 
 
+def clear_plan(plan: dict) -> None:
+    plan["groups"].clear()
+
+
 def make_label(sample_id: str, analyte: dict) -> str:
     suffix = analyte.get("label_suffix", "").strip()
     return sample_id if not suffix else f"{sample_id}\n{suffix}"

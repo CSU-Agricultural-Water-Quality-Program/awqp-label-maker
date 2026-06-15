@@ -62,7 +62,7 @@ SHAREPOINT_CONFIG_PATH = (
     r"Field Monitoring and Data\AWQP Label Maker Tool\config.json"
 )
 LOCAL_CATALOG_REFERENCE_DATE = "June 4, 2026"
-CONFIG = load_config(CONFIG_PATH)
+CONFIG = st.session_state.get("custom_config") or load_config(CONFIG_PATH)
 AWQP_HOME_URL = "https://agsci.colostate.edu/waterquality/"
 AWQP_LOGO_URL = (
     "https://agsci.colostate.edu/waterquality/wp-content/uploads/sites/160/2024/05/"
@@ -140,6 +140,28 @@ def dated_filename(prefix: str, extension: str, filename_date: date | None = Non
 
 def timestamped_filename(prefix: str, extension: str, moment: datetime | None = None) -> str:
     return f"{prefix}_{(moment or datetime.now()).strftime('%Y-%m-%d_%H-%M-%S')}.{extension}"
+
+
+def filename_component(value: object) -> str:
+    component = re.sub(r"[^A-Za-z0-9]+", "_", str(value).strip()).strip("_")
+    return component or "Unknown"
+
+
+def label_export_filename(plan: dict, config: dict, collection_date: date) -> str:
+    location_events: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for group in plan["groups"]:
+        pair = (group["location_key"], group["event_number"])
+        if pair in seen:
+            continue
+        seen.add(pair)
+        location_label = config["locations"][group["location_key"]]["label"]
+        location_events.append(
+            f"{filename_component(location_label)}_Event_{filename_component(group['event_number'])}"
+        )
+
+    descriptor = "_".join(location_events) or "awqp_label_outputs"
+    return dated_filename(descriptor, "xlsx", collection_date)
 
 
 def parse_config_export_timestamp(filename: str) -> datetime | None:
@@ -393,6 +415,21 @@ def apply_location_row(target_config: dict, row: dict[str, object]) -> None:
     legacy_aliases = parse_list_field(
         "" if pd.isna(row["Legacy Aliases"]) else str(row["Legacy Aliases"])
     )
+    update_catalog_entry(
+        target_config,
+        section_name="locations",
+        entry_key=str(row["Key"]),
+        entry_id="" if pd.isna(row["ID"]) else str(row["ID"]).strip(),
+        label="" if pd.isna(row["Label"]) else str(row["Label"]).strip(),
+        active=bool(row["Active"]),
+        aliases=aliases,
+        legacy_aliases=legacy_aliases,
+        legacy_only=bool(row["Legacy Only"]),
+    )
+    if bool(row["Allow Blank"]):
+        target_config["locations"][str(row["Key"])].pop("allow_blank_treatment", None)
+    else:
+        target_config["locations"][str(row["Key"])]["allow_blank_treatment"] = False
 
 
 def set_flash_message(level: str, message: str) -> None:
@@ -423,6 +460,13 @@ def mark_config_export_needed() -> None:
 
 def mark_config_exported() -> None:
     st.session_state.admin_export_needed = False
+
+
+def reset_builder_for_config_change() -> None:
+    st.session_state.sample_plan = empty_plan()
+    for key in list(st.session_state):
+        if key.startswith("builder_"):
+            del st.session_state[key]
 
 
 def validate_uploaded_catalog(config_data: object) -> list[str]:
@@ -458,21 +502,6 @@ def validate_uploaded_catalog(config_data: object) -> list[str]:
         errors.append("Uploaded config must include the special `blank` treatment entry.")
 
     return errors
-    update_catalog_entry(
-        target_config,
-        section_name="locations",
-        entry_key=str(row["Key"]),
-        entry_id="" if pd.isna(row["ID"]) else str(row["ID"]).strip(),
-        label="" if pd.isna(row["Label"]) else str(row["Label"]).strip(),
-        active=bool(row["Active"]),
-        aliases=aliases,
-        legacy_aliases=legacy_aliases,
-        legacy_only=bool(row["Legacy Only"]),
-    )
-    if bool(row["Allow Blank"]):
-        target_config["locations"][str(row["Key"])].pop("allow_blank_treatment", None)
-    else:
-        target_config["locations"][str(row["Key"])]["allow_blank_treatment"] = False
 
 
 def apply_treatment_row(target_config: dict, row: dict[str, object]) -> None:
@@ -1379,6 +1408,55 @@ with st.sidebar:
         key="page",
     )
     st.divider()
+    with st.expander("Use custom config"):
+        st.caption(
+            "Upload a current AWQP config for this browser session. This does not edit or replace the app's saved config."
+        )
+        custom_config_file = st.file_uploader(
+            "Upload custom config.json",
+            type=["json"],
+            key="custom_config_upload",
+        )
+        if st.session_state.get("custom_config_source"):
+            st.info(f"Active custom config: `{st.session_state.custom_config_source}`")
+        custom_upload_col, local_config_col = st.columns(2)
+        use_custom_config = custom_upload_col.button(
+            "Use uploaded config",
+            type="primary",
+            key="use_custom_config",
+        )
+        use_saved_config = local_config_col.button(
+            "Use saved config",
+            key="use_saved_config",
+            disabled="custom_config" not in st.session_state,
+        )
+
+        if use_custom_config:
+            if custom_config_file is None:
+                st.warning("Upload a config JSON file first.")
+            else:
+                try:
+                    custom_config = json.loads(custom_config_file.getvalue().decode("utf-8"))
+                except Exception as exc:
+                    st.error(f"Could not read uploaded JSON: {exc}")
+                else:
+                    custom_config_errors = validate_uploaded_catalog(custom_config)
+                    if custom_config_errors:
+                        for error in custom_config_errors:
+                            st.error(error)
+                    else:
+                        st.session_state.custom_config = custom_config
+                        st.session_state.custom_config_source = custom_config_file.name
+                        reset_builder_for_config_change()
+                        st.rerun()
+
+        if use_saved_config:
+            st.session_state.pop("custom_config", None)
+            st.session_state.pop("custom_config_source", None)
+            reset_builder_for_config_change()
+            st.rerun()
+
+    st.divider()
     collection_date = None
     include_lab_blank = False
     blank_context = None
@@ -1638,7 +1716,11 @@ else:
                 st.download_button(
                     "Download Excel workbook",
                     data=workbook_bytes(tables),
-                    file_name=dated_filename("awqp_label_outputs", "xlsx", collection_date),
+                    file_name=label_export_filename(
+                        st.session_state.sample_plan,
+                        CONFIG,
+                        collection_date,
+                    ),
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
             else:

@@ -44,6 +44,7 @@ from utils.label_builder import (
     remove_group_from_plan,
 )
 from utils.table_appender import append_uploaded_tables
+from utils.word_labels import avery_5520_docx_bytes
 
 
 st.set_page_config(
@@ -162,6 +163,13 @@ def label_export_filename(plan: dict, config: dict, collection_date: date) -> st
 
     descriptor = "_".join(location_events) or "awqp_label_outputs"
     return dated_filename(descriptor, "xlsx", collection_date)
+
+
+def printable_labels_filename(plan: dict, config: dict, collection_date: date) -> str:
+    return label_export_filename(plan, config, collection_date).replace(
+        ".xlsx",
+        "_Avery5520_Calibri12_Labels.docx",
+    )
 
 
 def parse_config_export_timestamp(filename: str) -> datetime | None:
@@ -1725,6 +1733,17 @@ else:
                 )
             else:
                 st.warning("Excel export is unavailable because `openpyxl` is not installed in this environment.")
+            st.download_button(
+                "Download printable Avery 5520 labels (Calibri 12 pt)",
+                data=avery_5520_docx_bytes(tables["Labels"]["Label"].fillna("").astype(str).tolist()),
+                file_name=printable_labels_filename(
+                    st.session_state.sample_plan,
+                    CONFIG,
+                    collection_date,
+                ),
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                help="Ready-to-print Word document for Avery 5520 waterproof film address labels: 30 labels per sheet, 1 x 2 5/8 inches.",
+            )
             st.download_button(
                 "Download ZIP of CSVs",
                 data=zip_exports(tables),

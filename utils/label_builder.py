@@ -13,7 +13,7 @@ LABEL_COLUMNS = [
     "Date",
     "Analysis",
     "Analyses Code",
-    "Perserved",
+    "Preserved",
     "Volume",
     "Label",
 ]
@@ -24,7 +24,7 @@ EVENT_COLUMNS = [
     "Date",
     "Analysis",
     "Analyses Code",
-    "Perserved",
+    "Preserved",
     "Volume",
     "Comment ",
 ]
@@ -35,7 +35,7 @@ ALS_COLUMNS = [
     "Date",
     "Analysis",
     "Analyses Code",
-    "Perserved",
+    "Preserved",
     "Volume",
     "Comments",
 ]
@@ -284,7 +284,7 @@ def build_output_tables(
                 "Date": row.collection_date,
                 "Analysis": row.analysis,
                 "Analyses Code": row.analyses_code,
-                "Perserved": row.preserved,
+                "Preserved": row.preserved,
                 "Volume": row.volume,
                 "Label": row.label,
             }
@@ -296,7 +296,7 @@ def build_output_tables(
                 "Date": row.collection_date,
                 "Analysis": row.analysis,
                 "Analyses Code": row.analyses_code,
-                "Perserved": row.preserved,
+                "Preserved": row.preserved,
                 "Volume": row.volume,
                 "Comment ": row.comment,
             }
@@ -309,7 +309,7 @@ def build_output_tables(
                     "Date": row.collection_date,
                     "Analysis": row.analysis,
                     "Analyses Code": row.analyses_code,
-                    "Perserved": row.preserved,
+                    "Preserved": row.preserved,
                     "Volume": row.volume,
                     "Comments": row.comment,
                 }

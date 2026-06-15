@@ -195,7 +195,7 @@ The existing label workflow is systematic, but it has historically required a sm
 
 The `Event` export mirrors the tab used for season event tracking. A typical output looks like this:
 
-| Sample ID | Irr/Str | Date | Analysis | Analyses Code | Perserved | Volume | Comment |
+| Sample ID | Irr/Str | Date | Analysis | Analyses Code | Preserved | Volume | Comment |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `NHC-ROAD-01-GB-1` | `1` | `04/15/2025` | `NO3+NO2/OP*/TDS` | `A,B,G` | `No` | `500` | |
 | `NHC-ROAD-01-GB-2` | `1` | `04/15/2025` | `TKN/TP` | `C,D` | `Sulfuric` | `250` | |

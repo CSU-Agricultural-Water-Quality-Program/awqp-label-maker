@@ -24,7 +24,10 @@ class LoadedTable:
 
 
 def _normalize_column_name(name: object) -> str:
-    return " ".join(str(name).strip().lower().split())
+    normalized = " ".join(str(name).strip().lower().split())
+    if normalized == "perserved":
+        return "preserved"
+    return normalized
 
 
 def _prepare_frame(frame: pd.DataFrame) -> pd.DataFrame:

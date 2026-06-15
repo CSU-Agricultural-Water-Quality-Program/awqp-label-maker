@@ -92,6 +92,11 @@ All domain-specific definitions are stored in `config/config.json`, including:
 - Canonical treatments, IDs, and parent-location relationships
 - Legacy aliases used for backward-compatible R parsing
 - Optional treatment grouping metadata for the ALS Data Cleaning Tool export
+
+`config/config.json` is always the live app's current recommended default. Timestamped JSON files
+in `config/` are legacy snapshots that users may select from the sidebar when they need to
+reproduce labels from an older catalog. Sidebar selections and uploaded configs apply only to the
+current browser session and do not replace the default file.
 - Analyte codes and ALS requirements
 - Event types
 - Sample methods

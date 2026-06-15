@@ -54,6 +54,7 @@ st.set_page_config(
 
 
 CONFIG_PATH = Path(__file__).parent / "config" / "config.json"
+CONFIG_DIR = CONFIG_PATH.parent
 PASSWORD_HELP_PATH = (
     r"D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of "
     r"Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt"
@@ -475,6 +476,32 @@ def reset_builder_for_config_change() -> None:
     for key in list(st.session_state):
         if key.startswith("builder_"):
             del st.session_state[key]
+
+
+def repository_config_paths() -> dict[str, Path]:
+    config_paths = sorted(
+        CONFIG_DIR.glob("*.json"),
+        key=lambda path: (path.name != CONFIG_PATH.name, path.name),
+    )
+    return {path.name: path for path in config_paths}
+
+
+def repository_config_label(filename: str) -> str:
+    if filename == CONFIG_PATH.name:
+        return f"{filename} (current default / recommended)"
+    return f"{filename} (legacy snapshot)"
+
+
+def use_session_config(config_data: dict, source: str) -> None:
+    st.session_state.custom_config = config_data
+    st.session_state.custom_config_source = source
+    reset_builder_for_config_change()
+
+
+def use_default_config() -> None:
+    st.session_state.pop("custom_config", None)
+    st.session_state.pop("custom_config_source", None)
+    reset_builder_for_config_change()
 
 
 def validate_uploaded_catalog(config_data: object) -> list[str]:
@@ -1293,7 +1320,8 @@ def render_guide() -> None:
             - `No treatment`: the blank treatment option for sites that do not use explicit treatment IDs.
 
             **Important behavior**
-            - The runtime app always works from `config/config.json`.
+            - The runtime app defaults to `config/config.json`.
+            - Users may temporarily select a timestamped repository snapshot or upload another config from the sidebar for the current browser session.
             - Timestamped `awqp_config_...json` files are for upload, download, Git history, and SharePoint handoff.
             - The app does not currently write directly to SharePoint or GitHub.
             """
@@ -1416,17 +1444,48 @@ with st.sidebar:
         key="page",
     )
     st.divider()
-    with st.expander("Use custom config"):
+    with st.expander("Choose config version"):
         st.caption(
-            "Upload a current AWQP config for this browser session. This does not edit or replace the app's saved config."
+            "`config.json` is the current recommended default. Timestamped repository configs are legacy snapshots for reproducing older labels. Any selection applies only to this browser session."
         )
+        repo_configs = repository_config_paths()
+        selected_repo_config = st.selectbox(
+            "Repository config",
+            options=list(repo_configs),
+            format_func=repository_config_label,
+            key="repository_config_selection",
+        )
+        if st.button("Use selected repository config", key="use_repository_config"):
+            if selected_repo_config == CONFIG_PATH.name:
+                use_default_config()
+                st.rerun()
+            try:
+                repository_config = load_config(repo_configs[selected_repo_config])
+            except Exception as exc:
+                st.error(f"Could not read `{selected_repo_config}`: {exc}")
+            else:
+                repository_config_errors = validate_uploaded_catalog(repository_config)
+                if repository_config_errors:
+                    for error in repository_config_errors:
+                        st.error(error)
+                else:
+                    use_session_config(
+                        repository_config,
+                        f"Repository legacy snapshot: {selected_repo_config}",
+                    )
+                    st.rerun()
+
+        st.divider()
+        st.caption("Upload a config when the needed version is not available in the repository.")
         custom_config_file = st.file_uploader(
             "Upload custom config.json",
             type=["json"],
             key="custom_config_upload",
         )
         if st.session_state.get("custom_config_source"):
-            st.info(f"Active custom config: `{st.session_state.custom_config_source}`")
+            st.info(f"Active session config: `{st.session_state.custom_config_source}`")
+        else:
+            st.success("Active config: `config.json` (current default / recommended)")
         custom_upload_col, local_config_col = st.columns(2)
         use_custom_config = custom_upload_col.button(
             "Use uploaded config",
@@ -1434,7 +1493,7 @@ with st.sidebar:
             key="use_custom_config",
         )
         use_saved_config = local_config_col.button(
-            "Use saved config",
+            "Use current default",
             key="use_saved_config",
             disabled="custom_config" not in st.session_state,
         )
@@ -1453,15 +1512,11 @@ with st.sidebar:
                         for error in custom_config_errors:
                             st.error(error)
                     else:
-                        st.session_state.custom_config = custom_config
-                        st.session_state.custom_config_source = custom_config_file.name
-                        reset_builder_for_config_change()
+                        use_session_config(custom_config, f"Uploaded file: {custom_config_file.name}")
                         st.rerun()
 
         if use_saved_config:
-            st.session_state.pop("custom_config", None)
-            st.session_state.pop("custom_config_source", None)
-            reset_builder_for_config_change()
+            use_default_config()
             st.rerun()
 
     st.divider()

@@ -188,7 +188,7 @@
     "TY": {
       "id": "TY",
       "label": "Knott Livestock",
-      "allow_blank_treatment": false
+      "allow_blank_treatment": true
     }
   },
   "treatments": {

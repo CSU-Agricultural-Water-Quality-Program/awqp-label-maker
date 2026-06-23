@@ -40,6 +40,10 @@ ALS_COLUMNS = [
     "Comments",
 ]
 
+DEFAULT_BOTTLE_SUITE_ANALYTE_KEYS = {"1", "2", "4"}
+NITRIC_EXTRA_BOTTLE_ANALYTE_KEYS = {"3", "10"}
+UNKNOWN_BOTTLE_COUNT_MESSAGE = "Ask AWQP staff for bottle count"
+
 
 @dataclass
 class SampleRow:
@@ -170,15 +174,36 @@ def get_plan_bottle_row_count(
     return bottle_rows
 
 
-def get_blank_analyte_keys(plan: dict, config: dict) -> list[str]:
-    selected_keys: list[str] = []
-    for group in plan["groups"]:
-        for analyte_key in group["analyte_keys"]:
-            if analyte_key not in selected_keys:
-                selected_keys.append(analyte_key)
+def get_bottles_per_row_message(analyte_keys: list[str]) -> str:
+    selected_keys = set(analyte_keys)
+    known_four_bottle_suite = DEFAULT_BOTTLE_SUITE_ANALYTE_KEYS | NITRIC_EXTRA_BOTTLE_ANALYTE_KEYS
 
-    if selected_keys:
-        return selected_keys
+    if selected_keys == DEFAULT_BOTTLE_SUITE_ANALYTE_KEYS:
+        return "3 bottles per row"
+    if (
+        DEFAULT_BOTTLE_SUITE_ANALYTE_KEYS < selected_keys
+        and selected_keys <= known_four_bottle_suite
+    ):
+        return "4 bottles per row"
+    return UNKNOWN_BOTTLE_COUNT_MESSAGE
+
+
+def get_plan_bottles_per_row_message(plan: dict) -> str:
+    messages = {
+        get_bottles_per_row_message(group["analyte_keys"]) for group in plan["groups"]
+    }
+    if len(messages) == 1:
+        return messages.pop()
+    return "Bottles per row vary by sample group"
+
+
+def get_blank_analyte_keys(plan: dict, config: dict) -> list[str]:
+    if plan["groups"]:
+        largest_analyte_group = max(
+            plan["groups"],
+            key=lambda group: len(group["analyte_keys"]),
+        )
+        return list(dict.fromkeys(largest_analyte_group["analyte_keys"]))
 
     return [
         analyte_key

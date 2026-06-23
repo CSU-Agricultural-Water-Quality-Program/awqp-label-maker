@@ -38,8 +38,10 @@ from utils.label_builder import (
     build_output_tables,
     clear_plan,
     empty_plan,
+    get_bottles_per_row_message,
     get_group_duplicate_keys,
     get_group_bottle_row_count,
+    get_plan_bottles_per_row_message,
     get_plan_bottle_row_count,
     remove_group_from_plan,
 )
@@ -122,10 +124,6 @@ def find_duplicate_analyte_ids(config: dict, analyte_keys: list[str]) -> dict[st
         for analyte_id, keys in analyte_ids.items()
         if analyte_id and len(keys) > 1
     }
-
-
-def analyte_sets_match(existing_keys: list[str], new_keys: list[str]) -> bool:
-    return set(existing_keys) == set(new_keys)
 
 
 def deep_copy_catalog(config: dict) -> dict:
@@ -1228,6 +1226,8 @@ def render_guide() -> None:
             - Every analyte is generated for each treatment/method combination.
             - If field duplicates are checked, the app generates the normal rows and matching duplicate rows.
             - Example: `2 treatments x 2 methods x 4 analytes = 16 rows`, or `32 rows` with duplicates.
+            - The bottle setup summary shows bottle rows and the expected bottles per row for known AWQP suites.
+            - Sample groups in one batch may use different analyte lists when a special case requires fewer labels.
 
             **Outputs**
             - `Labels`: printable label rows with the label text column.
@@ -1238,7 +1238,8 @@ def render_guide() -> None:
             **Comments and lab blanks**
             - Some analytes include a default comment, such as heavy metals.
             - `Custom comment` replaces that default comment for all rows in the sample group.
-            - Lab blank rows are controlled by the sidebar session options.
+            - Lab blank rows are controlled by the sidebar session options and use the analyte list from the sample group with the most selected analytes.
+            - Batches are intended for one location at a time so each Excel workbook can be saved in the matching AWQP SharePoint location folder.
             """
         )
 
@@ -1675,15 +1676,6 @@ else:
                     + "; ".join(duplicate_messages)
                     + "."
                 )
-            elif st.session_state.sample_plan["groups"] and not analyte_sets_match(
-                st.session_state.sample_plan["groups"][0]["analyte_keys"],
-                analyte_keys,
-            ):
-                st.error(
-                    "All sample groups in one batch must use the same analytes because the app generates "
-                    "one shared lab blank for the batch. Remove the existing groups or clear the batch "
-                    "before starting a different analyte set."
-                )
             else:
                 add_group_to_plan(
                     st.session_state.sample_plan,
@@ -1707,15 +1699,28 @@ else:
         if batch_header_cols[1].button("Clear batch", key="clear-sample-batch"):
             clear_plan(st.session_state.sample_plan)
             st.rerun()
+        batch_location_keys = {group["location_key"] for group in groups}
+        if len(batch_location_keys) > 1:
+            location_labels = ", ".join(
+                CONFIG["locations"][key]["label"] for key in sorted(batch_location_keys)
+            )
+            st.warning(
+                "Multiple locations are currently in this batch: "
+                f"{location_labels}. Standard AWQP exports should use one location per batch; "
+                "build and download one location at a time, then save each export in its corresponding "
+                "AWQP SharePoint location folder."
+            )
         for index, group in enumerate(groups):
             combination_count = len(group["treatment_keys"]) * len(group["method_keys"])
             duplicate_count = len(get_group_duplicate_keys(group, CONFIG))
             bottle_row_count = get_group_bottle_row_count(group, CONFIG)
+            bottles_per_row_message = get_bottles_per_row_message(group["analyte_keys"])
             projected_row_count = combination_count * len(group["analyte_keys"]) * duplicate_count
             duplicate_label = "yes" if duplicate_count > 1 else "no"
             summary = (
                 f"{CONFIG['locations'][group['location_key']]['label']} | "
                 f"{bottle_row_count} bottle row(s) | "
+                f"{bottles_per_row_message} | "
                 f"{combination_count} treatment/method combination(s) | "
                 f"{len(group['analyte_keys'])} analytes | "
                 f"{projected_row_count} generated sample row(s)"
@@ -1751,11 +1756,15 @@ else:
                 CONFIG,
                 include_lab_blank=include_lab_blank,
             )
+            bottles_per_row_message = get_plan_bottles_per_row_message(
+                st.session_state.sample_plan
+            )
             st.markdown(
                 f"""
                 <div style="background-color: #eef6ea; border: 1px solid #7aa95c; border-radius: 0.75rem; padding: 1rem 1.25rem; margin: 1rem 0 1.25rem 0;">
                   <div style="font-size: 0.9rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: #355724;">Bottle setup summary</div>
                   <div style="font-size: 2rem; font-weight: 700; color: #1f3b12; line-height: 1.1; margin-top: 0.25rem;">{bottle_row_count} bottle row(s) needed</div>
+                  <div style="font-size: 1.25rem; font-weight: 700; color: #1f3b12; line-height: 1.2; margin-top: 0.35rem;">{bottles_per_row_message}</div>
                   <div style="font-size: 0.95rem; color: #355724; margin-top: 0.35rem;">Includes every treatment/method sample row and {'1 lab blank row' if include_lab_blank else 'no lab blank row'}.</div>
                 </div>
                 """,
@@ -1814,6 +1823,6 @@ else:
             - `Event` output matches the workbook's `Event` tab schema.
             - `For ALS Lab COC` excludes analytes marked `exclude_from_als`.
             - Label cells append preservative text on a second line when required.
-            - Lab blank rows use the analytes selected across the current batch.
+            - Lab blank rows use the analyte list from the sample group with the most selected analytes.
             """
         )

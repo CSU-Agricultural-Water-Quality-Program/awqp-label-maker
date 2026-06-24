@@ -42,7 +42,7 @@ Rules:
 - A location may have `aliases` and `legacy_aliases`.
 - A treatment may have `aliases` and `legacy_aliases`.
 - A treatment alias may imply both the canonical treatment and its parent location.
-- Legacy-only entries may remain in the catalog for compatibility, but should stay inactive for new label generation.
+- Inactive entries may remain in the catalog for compatibility, but are hidden from new label generation.
 
 ### 3. Implemented catalog schema
 
@@ -56,7 +56,6 @@ For locations:
 - `legacy_aliases`
 - `allow_blank_treatment`
 - `active`
-- `legacy_only`
 
 For treatments:
 
@@ -68,7 +67,6 @@ For treatments:
 - `treatment_group`
 - `r_label`
 - `active`
-- `legacy_only`
 
 Special treatment:
 
@@ -291,10 +289,10 @@ This behavior is implemented in:
 The `Label Editor` must preserve the parent-child model. That means:
 
 - locations and treatments are still editable in separate tables
-- but treatments must carry a valid `parent_location`
+- active treatments must carry a valid `parent_location`
 - active treatments cannot point to inactive parent locations
-- deactivating a location with active child treatments should be blocked
-- legacy-only entries may remain in the catalog without being exposed in canonical builder workflows
+- deactivating a location automatically deactivates its child treatments
+- inactive entries may remain in the catalog without being exposed in canonical builder workflows
 
 ## ALS R Export Policy
 

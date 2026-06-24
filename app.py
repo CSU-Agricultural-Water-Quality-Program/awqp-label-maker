@@ -25,7 +25,6 @@ from utils.config_loader import (
     get_treatment_parent_location,
     get_treatment_r_label,
     is_catalog_entry_active,
-    is_catalog_entry_legacy_only,
     load_config,
     parse_list_field,
     save_config,
@@ -65,7 +64,6 @@ SHAREPOINT_CONFIG_PATH = (
     r"D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of "
     r"Field Monitoring and Data\AWQP Label Maker Tool\config.json"
 )
-LOCAL_CATALOG_REFERENCE_DATE = "June 4, 2026"
 CONFIG = st.session_state.get("custom_config") or load_config(CONFIG_PATH)
 AWQP_HOME_URL = "https://agsci.colostate.edu/waterquality/"
 AWQP_LOGO_URL = (
@@ -317,7 +315,6 @@ def make_location_editor_rows(config: dict) -> list[dict[str, object]]:
             "Legacy Aliases": serialize_list_field(get_entry_list_field(entry, "legacy_aliases")),
             "Allow Blank": entry.get("allow_blank_treatment", True),
             "Active": is_catalog_entry_active(entry),
-            "Legacy Only": is_catalog_entry_legacy_only(entry),
         }
         for key, entry in config["locations"].items()
     ]
@@ -345,7 +342,6 @@ def make_treatment_editor_rows(config: dict) -> tuple[list[dict[str, object]], l
             "Aliases": serialize_list_field(get_entry_list_field(entry, "aliases")),
             "Legacy Aliases": serialize_list_field(get_entry_list_field(entry, "legacy_aliases")),
             "Active": is_catalog_entry_active(entry),
-            "Legacy Only": is_catalog_entry_legacy_only(entry),
         }
         if key == "blank":
             system_rows.append(row)
@@ -379,7 +375,6 @@ def make_new_treatment_seed_rows() -> list[dict[str, object]]:
             "R Label": "",
             "Aliases": "",
             "Legacy Aliases": "",
-            "Legacy Only": False,
             "Active": True,
         }
     ]
@@ -405,7 +400,6 @@ def normalize_new_treatment_rows(rows: list[dict[str, object]]) -> list[dict[str
                 if pd.isna(row.get("Legacy Aliases", ""))
                 else str(row.get("Legacy Aliases", "")).strip()
             ),
-            "Legacy Only": bool(row.get("Legacy Only", False)),
             "Active": bool(row.get("Active", True)),
         }
         has_values = any(
@@ -431,7 +425,6 @@ def apply_location_row(target_config: dict, row: dict[str, object]) -> None:
         active=bool(row["Active"]),
         aliases=aliases,
         legacy_aliases=legacy_aliases,
-        legacy_only=bool(row["Legacy Only"]),
     )
     if bool(row["Allow Blank"]):
         target_config["locations"][str(row["Key"])].pop("allow_blank_treatment", None)
@@ -469,6 +462,30 @@ def mark_config_exported() -> None:
     st.session_state.admin_export_needed = False
 
 
+def config_file_timestamp_label(path: Path) -> str:
+    try:
+        return format_config_timestamp(datetime.fromtimestamp(path.stat().st_mtime))
+    except OSError:
+        return "unknown date"
+
+
+def repository_config_source_label(filename: str, path: Path) -> str:
+    if filename == CONFIG_PATH.name:
+        return f"`{filename}` current default, file updated {config_file_timestamp_label(path)}"
+
+    timestamp = parse_config_export_timestamp(filename)
+    if timestamp is None:
+        return f"Repository config `{filename}`"
+    return f"Repository config `{filename}` from {format_config_timestamp(timestamp)}"
+
+
+def active_config_source_label() -> str:
+    return st.session_state.get(
+        "custom_config_source",
+        repository_config_source_label(CONFIG_PATH.name, CONFIG_PATH),
+    )
+
+
 def reset_builder_for_config_change() -> None:
     st.session_state.sample_plan = empty_plan()
     for key in list(st.session_state):
@@ -487,18 +504,23 @@ def repository_config_paths() -> dict[str, Path]:
 def repository_config_label(filename: str) -> str:
     if filename == CONFIG_PATH.name:
         return f"{filename} (current default / recommended)"
-    return f"{filename} (legacy snapshot)"
+    timestamp = parse_config_export_timestamp(filename)
+    if timestamp is None:
+        return f"{filename} (repository config)"
+    return f"{filename} ({format_config_timestamp(timestamp)})"
 
 
 def use_session_config(config_data: dict, source: str) -> None:
     st.session_state.custom_config = config_data
     st.session_state.custom_config_source = source
+    st.session_state.admin_export_needed = False
     reset_builder_for_config_change()
 
 
 def use_default_config() -> None:
     st.session_state.pop("custom_config", None)
     st.session_state.pop("custom_config_source", None)
+    st.session_state.admin_export_needed = False
     reset_builder_for_config_change()
 
 
@@ -554,8 +576,23 @@ def apply_treatment_row(target_config: dict, row: dict[str, object]) -> None:
         legacy_aliases=legacy_aliases,
         r_label="" if pd.isna(row["R Label"]) else str(row["R Label"]).strip(),
         treatment_group="" if pd.isna(row["Treatment Group"]) else str(row["Treatment Group"]).strip(),
-        legacy_only=bool(row["Legacy Only"]),
     )
+
+
+def deactivate_child_treatments_for_inactive_locations(config: dict) -> list[str]:
+    deactivated_treatment_keys: list[str] = []
+    for location_key, location in config["locations"].items():
+        if is_catalog_entry_active(location):
+            continue
+        for treatment_key, treatment in config["treatments"].items():
+            if treatment_key == "blank":
+                continue
+            if get_treatment_parent_location(treatment) != location_key:
+                continue
+            if is_catalog_entry_active(treatment):
+                treatment["active"] = False
+                deactivated_treatment_keys.append(treatment_key)
+    return deactivated_treatment_keys
 
 
 def render_location_catalog_editor(config: dict, config_path: Path) -> None:
@@ -573,7 +610,6 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
             "Legacy Aliases": st.column_config.TextColumn("Legacy Aliases"),
             "Allow Blank": st.column_config.CheckboxColumn("Allow No treatment"),
             "Active": st.column_config.CheckboxColumn("Active"),
-            "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
         },
         key="locations_catalog_editor",
     )
@@ -583,6 +619,7 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
         candidate_config = deep_copy_catalog(config)
         for row in proposed_rows:
             apply_location_row(candidate_config, row)
+        deactivated_treatment_keys = deactivate_child_treatments_for_inactive_locations(candidate_config)
 
         errors: list[str] = []
         for row in proposed_rows:
@@ -596,7 +633,7 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
                 legacy_aliases=parse_list_field(
                     "" if pd.isna(row["Legacy Aliases"]) else str(row["Legacy Aliases"])
                 ),
-                legacy_only=bool(row["Legacy Only"]),
+                active=bool(row["Active"]),
             )
             row_errors.extend(
                 update_catalog_status_errors(
@@ -616,12 +653,22 @@ def render_location_catalog_editor(config: dict, config_path: Path) -> None:
 
         for row in proposed_rows:
             apply_location_row(config, row)
+        deactivate_child_treatments_for_inactive_locations(config)
 
         save_config(config_path, config)
         mark_config_export_needed()
+        cascade_message = ""
+        if deactivated_treatment_keys:
+            cascade_message = (
+                " Child treatments also deactivated: "
+                + ", ".join(deactivated_treatment_keys)
+                + "."
+            )
         set_flash_message(
             "success",
-            "Locations table changes saved. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
+            "Locations table changes saved."
+            + cascade_message
+            + " Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy.",
         )
         st.rerun()
 
@@ -655,7 +702,6 @@ def render_treatment_catalog_editor(config: dict, config_path: Path) -> None:
             "Aliases": st.column_config.TextColumn("Aliases"),
             "Legacy Aliases": st.column_config.TextColumn("Legacy Aliases"),
             "Active": st.column_config.CheckboxColumn("Active"),
-            "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
         },
         key="treatments_catalog_editor",
     )
@@ -685,7 +731,7 @@ def render_treatment_catalog_editor(config: dict, config_path: Path) -> None:
                 ),
                 r_label="" if pd.isna(row["R Label"]) else str(row["R Label"]).strip(),
                 treatment_group="" if pd.isna(row["Treatment Group"]) else str(row["Treatment Group"]).strip(),
-                legacy_only=bool(row["Legacy Only"]),
+                active=bool(row["Active"]),
             )
             row_errors.extend(
                 update_catalog_status_errors(
@@ -766,20 +812,6 @@ def update_catalog_status_errors(
     errors: list[str] = []
     if section_name == "treatments" and entry_key == "blank":
         errors.append("The `No treatment` entry must stay active.")
-    if section_name == "locations":
-        active_children = [
-            child_key
-            for child_key, child in config["treatments"].items()
-            if child_key != "blank"
-            and get_treatment_parent_location(child) == entry_key
-            and is_catalog_entry_active(child)
-        ]
-        if active_children:
-            errors.append(
-                "Deactivate or reassign active child treatments first: "
-                + ", ".join(active_children)
-                + "."
-            )
     if count_active_catalog_entries(config[section_name], exclude_key=entry_key) == 0:
         errors.append(f"At least one active {section_name} entry is required.")
     return errors
@@ -821,129 +853,42 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             st.error("Incorrect password.")
         return
 
-    if st.session_state.get("admin_catalog_ready", False):
-        auth_cols = st.columns([4, 2, 1, 1])
-        auth_cols[0].success("Label Editor unlocked for this browser session.")
-        export_file_name = timestamped_filename("awqp_config", "json")
-        auth_cols[1].download_button(
-            "Download timestamped config export",
-            data=json.dumps(config, indent=2) + "\n",
-            file_name=export_file_name,
-            mime="application/json",
-            type="primary" if st.session_state.get("admin_export_needed", False) else "secondary",
-            help="Use this to back up the current catalog, commit it to GitHub, and upload it to SharePoint.",
-            on_click=mark_config_exported,
-        )
-        if auth_cols[2].button("How To"):
-            st.session_state.guide_focus = "Label Editor"
-            st.session_state.page_redirect = "Guide"
-            st.rerun()
-        logout_clicked = auth_cols[3].button("Log out")
-    else:
-        auth_cols = st.columns([5, 1, 1])
-        auth_cols[0].success("Label Editor unlocked for this browser session.")
-        if auth_cols[1].button("How To"):
-            st.session_state.guide_focus = "Label Editor"
-            st.session_state.page_redirect = "Guide"
-            st.rerun()
-        logout_clicked = auth_cols[2].button("Log out")
+    auth_cols = st.columns([4, 2, 1, 1])
+    auth_cols[0].success("Label Editor unlocked for this browser session.")
+    export_file_name = timestamped_filename("awqp_config", "json")
+    auth_cols[1].download_button(
+        "Download timestamped config export",
+        data=json.dumps(config, indent=2) + "\n",
+        file_name=export_file_name,
+        mime="application/json",
+        type="primary" if st.session_state.get("admin_export_needed", False) else "secondary",
+        help="Use this to back up the current catalog, commit it to GitHub, and upload it to SharePoint.",
+        on_click=mark_config_exported,
+    )
+    if auth_cols[2].button("How To"):
+        st.session_state.guide_focus = "Label Editor"
+        st.session_state.page_redirect = "Guide"
+        st.rerun()
+    logout_clicked = auth_cols[3].button("Log out")
 
     if logout_clicked:
         st.session_state.admin_authenticated = False
-        st.session_state.admin_catalog_ready = False
-        st.session_state.admin_catalog_source = ""
         st.session_state.admin_export_needed = False
         st.rerun()
 
     render_flash_message()
-
-    if not st.session_state.get("admin_catalog_ready", False):
-        st.subheader("Load Current Catalog Before Editing")
-        st.info(
-            "Upload the current shared `config.json` before editing so you are working from the latest AWQP catalog."
-        )
-        st.caption(f"SharePoint catalog path: `{SHAREPOINT_CONFIG_PATH}`")
-        uploaded_config_file = st.file_uploader(
-            "Upload current config.json",
-            type=["json"],
-            key="admin_config_upload",
-            help="Open the shared SharePoint folder or use the latest timestamped AWQP config export, then upload it here before editing.",
-        )
-        if uploaded_config_file is not None:
-            uploaded_timestamp = parse_config_export_timestamp(uploaded_config_file.name)
-            if uploaded_timestamp is not None:
-                st.info(
-                    "Uploaded file: "
-                    f"`{uploaded_config_file.name}` from {format_config_timestamp(uploaded_timestamp)}."
-                )
-            else:
-                st.info(
-                    f"Uploaded file: `{uploaded_config_file.name}`. No export timestamp was found in the filename."
-                )
-        upload_col, emergency_col = st.columns(2)
-        use_uploaded_config = upload_col.button("Use uploaded config", type="primary")
-        use_local_catalog = emergency_col.button(
-            f"Use local {LOCAL_CATALOG_REFERENCE_DATE} catalog"
-        )
-
-        if use_uploaded_config:
-            if uploaded_config_file is None:
-                st.warning("Upload the current SharePoint `config.json` first.")
-            else:
-                try:
-                    uploaded_config = json.loads(uploaded_config_file.getvalue().decode("utf-8"))
-                except Exception as exc:
-                    st.error(f"Could not read uploaded JSON: {exc}")
-                else:
-                    upload_errors = validate_uploaded_catalog(uploaded_config)
-                    if upload_errors:
-                        for error in upload_errors:
-                            st.error(error)
-                    else:
-                        config.clear()
-                        config.update(uploaded_config)
-                        save_config(config_path, config)
-                        st.session_state.admin_catalog_ready = True
-                        st.session_state.admin_export_needed = False
-                        if uploaded_timestamp is not None:
-                            st.session_state.admin_catalog_source = (
-                                f"Uploaded file `{uploaded_config_file.name}` from "
-                                f"{format_config_timestamp(uploaded_timestamp)}"
-                            )
-                        else:
-                            st.session_state.admin_catalog_source = (
-                                f"Uploaded file `{uploaded_config_file.name}`"
-                            )
-                        set_flash_message(
-                            "success",
-                            "Uploaded config.json loaded successfully. You can now edit the catalog.",
-                        )
-                        st.rerun()
-
-        if use_local_catalog:
-            st.session_state.admin_catalog_ready = True
-            st.session_state.admin_catalog_source = (
-                f"Local repo config as of {LOCAL_CATALOG_REFERENCE_DATE} (emergency mode)"
-            )
-            st.session_state.admin_export_needed = False
-            set_flash_message(
-                "warning",
-                "Using the local repo catalog instead of the shared SharePoint config. This is not recommended except in an emergency.",
-            )
-            st.rerun()
-
-        st.warning(
-            f"Emergency option: you may continue with the local repo catalog as of {LOCAL_CATALOG_REFERENCE_DATE}, but this is not recommended unless the shared file is temporarily unavailable."
-        )
-        return
 
     if st.session_state.get("admin_export_needed", False):
         st.warning(
             "Catalog changes were saved in this session. Download the timestamped config export, commit/push it to GitHub, and replace the SharePoint copy."
         )
 
-    if st.session_state.get("admin_catalog_source"):
-        st.caption(f"Current editing source: {st.session_state['admin_catalog_source']}")
+    st.info(
+        "The Label Editor uses the same active config as the rest of this browser session. "
+        "Open `Choose config version` in the sidebar to switch to a repository config, "
+        "return to the current default, or upload a custom config before editing."
+    )
+    st.caption(f"Active session config: {active_config_source_label()}")
 
     with st.expander("GitHub / SharePoint handoff"):
         st.markdown(
@@ -952,7 +897,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
             - Commit and push that exported file into the repo history.
             - Place the same file back into SharePoint.
             - SharePoint destination: `{SHAREPOINT_CONFIG_PATH}`
-            - The app still edits the local working file `config/config.json`, but the exported timestamped file is the one users should archive and distribute.
+            - Saving editor changes writes the active session catalog into the local working file `config/config.json`; the exported timestamped file is the one users should archive and distribute.
             """
         )
 
@@ -1016,13 +961,11 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         "Legacy Aliases": st.column_config.TextColumn(
                             "Legacy Aliases (optional; example: CT_OLD)"
                         ),
-                        "Legacy Only": st.column_config.CheckboxColumn("Legacy Only"),
                         "Active": st.column_config.CheckboxColumn("Active"),
                     },
                     key="new_location_treatments_editor",
                 ).to_dict("records")
-                legacy_only = st.checkbox("Legacy only", value=False)
-                active = st.checkbox("Active", value=not legacy_only)
+                active = st.checkbox("Active", value=True)
                 save_location = st.form_submit_button("Save location", type="primary")
 
             if save_location:
@@ -1036,7 +979,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                     label=location_label,
                     aliases=aliases,
                     legacy_aliases=legacy_aliases,
-                    legacy_only=legacy_only,
+                    active=active,
                 )
                 if not site_has_no_treatments and not treatment_rows:
                     errors.append(
@@ -1058,7 +1001,6 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         label=location_label,
                         aliases=aliases,
                         legacy_aliases=legacy_aliases,
-                        legacy_only=legacy_only,
                         active=active,
                     )
                     if not site_has_no_treatments and not allow_blank_treatment:
@@ -1066,6 +1008,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
 
                     treatment_errors: list[str] = []
                     for row in treatment_rows:
+                        treatment_active = active and bool(row["Active"])
                         row_errors = validate_catalog_entry(
                             candidate_config,
                             section_name="treatments",
@@ -1076,7 +1019,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                             legacy_aliases=parse_list_field(row["Legacy Aliases"]),
                             r_label=row["R Label"],
                             treatment_group=row["Treatment Group"],
-                            legacy_only=bool(row["Legacy Only"]),
+                            active=treatment_active,
                         )
                         for error in row_errors:
                             treatment_errors.append(f"{row['ID'] or row['Label'] or 'New treatment'}: {error}")
@@ -1086,6 +1029,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                             st.error(error)
                     else:
                         for row in treatment_rows:
+                            treatment_active = active and bool(row["Active"])
                             append_catalog_entry(
                                 candidate_config,
                                 section_name="treatments",
@@ -1096,8 +1040,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                                 legacy_aliases=parse_list_field(row["Legacy Aliases"]),
                                 r_label=row["R Label"],
                                 treatment_group=row["Treatment Group"],
-                                legacy_only=bool(row["Legacy Only"]),
-                                active=bool(row["Active"]),
+                                active=treatment_active,
                             )
 
                         save_config(config_path, candidate_config)
@@ -1145,8 +1088,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                 treatment_legacy_aliases = st.text_input(
                     "Legacy aliases (comma-separated, optional; example: CT_OLD)"
                 )
-                legacy_only = st.checkbox("Legacy only", value=False, key="new_treatment_legacy_only")
-                active = st.checkbox("Active", value=not legacy_only, key="new_treatment_active")
+                active = st.checkbox("Active", value=True, key="new_treatment_active")
                 save_treatment = st.form_submit_button("Save treatment", type="primary")
 
             if save_treatment:
@@ -1162,7 +1104,7 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                     legacy_aliases=legacy_aliases,
                     r_label=r_label,
                     treatment_group=treatment_group,
-                    legacy_only=legacy_only,
+                    active=active,
                 )
                 if errors:
                     for error in dict.fromkeys(errors):
@@ -1178,7 +1120,6 @@ def render_admin_page(config: dict, config_path: Path) -> None:
                         legacy_aliases=legacy_aliases,
                         r_label=r_label,
                         treatment_group=treatment_group,
-                        legacy_only=legacy_only,
                         active=active,
                     )
                     save_config(config_path, config)
@@ -1264,15 +1205,16 @@ def render_guide() -> None:
             **To get started**
             1. Get the shared password from:
                `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\Label Edit Password.txt`
-            2. Open `Label Editor` and unlock it with that password.
-            3. Upload the current shared `config.json` before editing.
-            4. From there, choose whether you need to:
+            2. Use `Choose config version` in the sidebar to confirm the active session config, switch to a repository config, or upload a custom config if needed.
+            3. Open `Label Editor` and unlock it with that password.
+            4. Confirm the active session config shown at the top of the editor.
+            5. From there, choose whether you need to:
                - add a new entry
                - edit existing labels
                - download updated ALS R dictionaries
-            5. After saving catalog changes, download the new timestamped config export.
-            6. Commit and push that export into GitHub.
-            7. Place the same export back into SharePoint at:
+            6. After saving catalog changes, download the new timestamped config export.
+            7. Commit and push that export into GitHub.
+            8. Place the same export back into SharePoint at:
                `D:\OneDrive - Colostate\AWQP_Sharepoint\Water_Quality_Project\Research\Edge of Field Monitoring and Data\AWQP Label Maker Tool\config.json`
 
             **What each section does**
@@ -1294,8 +1236,8 @@ def render_guide() -> None:
             1. Open the `Label Editor` tab.
             2. Find the location or treatment row you want to change.
             3. Edit the table cell directly.
-            4. Use `Active` to hide old entries from normal workflows without deleting their history.
-            5. Use `Legacy Only` for compatibility-only entries that should not appear in normal new-label workflows.
+            4. Use `Active` to control whether an entry appears in normal new-label workflows.
+            5. Uncheck `Active` for old entries that should stay available for history and R compatibility but should not be used for new labels.
             6. Save the locations table or treatments table.
             7. After saving, confirm the change appears correctly in the catalog and in the Label Builder if it is an active entry.
 
@@ -1314,8 +1256,7 @@ def render_guide() -> None:
             - `Parent location`: the location that a treatment belongs to.
             - `Aliases`: alternate current tokens that should still match the same entry.
             - `Legacy aliases`: older tokens kept only so historic data can still be interpreted.
-            - `Legacy only`: an entry kept for backward compatibility that should not appear in normal new-label workflows.
-            - `Active`: whether the entry appears in normal builder and editor workflows.
+            - `Active`: whether the entry appears in normal builder workflows. Inactive entries stay in the catalog for history and R compatibility.
             - `Treatment group`: an optional analysis grouping, such as `CT`, `ST`, or `MT`.
             - `R label`: the label exported into the ALS Data Cleaning Tool dictionaries.
             - `No treatment`: the blank treatment option for sites that do not use explicit treatment IDs.
@@ -1447,7 +1388,7 @@ with st.sidebar:
     st.divider()
     with st.expander("Choose config version"):
         st.caption(
-            "`config.json` is the current recommended default. Timestamped repository configs are legacy snapshots for reproducing older labels. Any selection applies only to this browser session."
+            "Choose the catalog for this browser session. The Label Builder, Label Editor, and R dictionary export all use the active session config."
         )
         repo_configs = repository_config_paths()
         selected_repo_config = st.selectbox(
@@ -1469,12 +1410,15 @@ with st.sidebar:
                 if repository_config_errors:
                     for error in repository_config_errors:
                         st.error(error)
-                else:
-                    use_session_config(
-                        repository_config,
-                        f"Repository legacy snapshot: {selected_repo_config}",
-                    )
-                    st.rerun()
+                    else:
+                        use_session_config(
+                            repository_config,
+                            repository_config_source_label(
+                                selected_repo_config,
+                                repo_configs[selected_repo_config],
+                            ),
+                        )
+                        st.rerun()
 
         st.divider()
         st.caption("Upload a config when the needed version is not available in the repository.")
@@ -1484,9 +1428,9 @@ with st.sidebar:
             key="custom_config_upload",
         )
         if st.session_state.get("custom_config_source"):
-            st.info(f"Active session config: `{st.session_state.custom_config_source}`")
+            st.info(f"Active session config: {st.session_state.custom_config_source}")
         else:
-            st.success("Active config: `config.json` (current default / recommended)")
+            st.success(f"Active session config: {active_config_source_label()}")
         custom_upload_col, local_config_col = st.columns(2)
         use_custom_config = custom_upload_col.button(
             "Use uploaded config",
@@ -1513,7 +1457,15 @@ with st.sidebar:
                         for error in custom_config_errors:
                             st.error(error)
                     else:
-                        use_session_config(custom_config, f"Uploaded file: {custom_config_file.name}")
+                        uploaded_timestamp = parse_config_export_timestamp(custom_config_file.name)
+                        if uploaded_timestamp is None:
+                            source = f"Uploaded file `{custom_config_file.name}`"
+                        else:
+                            source = (
+                                f"Uploaded file `{custom_config_file.name}` from "
+                                f"{format_config_timestamp(uploaded_timestamp)}"
+                            )
+                        use_session_config(custom_config, source)
                         st.rerun()
 
         if use_saved_config:

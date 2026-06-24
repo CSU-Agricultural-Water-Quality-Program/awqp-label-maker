@@ -104,7 +104,7 @@ current browser session and do not replace the default file.
 
 This design allows easy updates without modifying application code while keeping the user-facing interface readable and consistent.
 
-The app also includes a `Label Editor` page for managing locations, assigning treatments to parent locations, correcting typos, and marking old entries inactive from the UI. Inactive and legacy-only entries are hidden from standard user dropdowns but remain visible in the editor and in the generated R compatibility dictionaries. The page is protected by a single shared password supplied through Streamlit secrets using either `admin_password` or `AWQP_ADMIN_PASSWORD`, or through the `AWQP_ADMIN_PASSWORD` environment variable.
+The app also includes a `Label Editor` page for managing locations, assigning treatments to parent locations, correcting typos, and marking old entries inactive from the UI. Inactive entries are hidden from standard user dropdowns but remain visible in the editor and in the generated R compatibility dictionaries. The page is protected by a single shared password supplied through Streamlit secrets using either `admin_password` or `AWQP_ADMIN_PASSWORD`, or through the `AWQP_ADMIN_PASSWORD` environment variable.
 
 ---
 

@@ -2,11 +2,14 @@
   "locations": {
     "A2": {
       "id": "A2",
-      "label": "ARDEC 2200"
+      "label": "ARDEC",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "K": {
       "id": "K",
       "label": "Kerbel",
+      "aliases": [],
       "legacy_aliases": [
         "KBI",
         "INF"
@@ -14,84 +17,105 @@
     },
     "UYM": {
       "id": "UYM",
-      "label": "Upper Yampa"
+      "label": "Upper Yampa",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "LG": {
       "id": "LG",
-      "label": "Legacy"
+      "label": "Legacy",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "AV": {
       "id": "AV",
-      "label": "AVRC Star"
+      "label": "AVRC Star",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "COW": {
       "id": "COW",
       "label": "AVRC Cowpea",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "BAR": {
       "id": "BAR",
       "label": "Barley",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "BT": {
       "id": "BT",
       "label": "Berthoud",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "HOL": {
       "id": "HOL",
       "label": "Big Hollow",
-      "allow_blank_treatment": false,
-      "active": false
+      "aliases": [],
+      "legacy_aliases": [],
+      "allow_blank_treatment": false
     },
     "BOL": {
       "id": "BOL",
       "label": "Boulder Lake",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "GU": {
       "id": "GU",
       "label": "Gunnison",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "MOL": {
       "id": "MOL",
       "label": "Molina",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "FNT": {
       "id": "FNT",
-      "label": "Fruita NT"
+      "label": "Fruita NT",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "FW": {
       "id": "FW",
       "label": "Fruita W",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "FB": {
       "id": "FB",
       "label": "Fruita B",
+      "aliases": [],
       "legacy_aliases": [
         "FBR",
         "F_BR",
         "F-BR",
         "F-B",
         "BR"
-      ],
-      "active": false
+      ]
     },
     "FF": {
       "id": "FF",
-      "label": "Fruita F"
+      "label": "Fruita F",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "FC": {
       "id": "FC",
-      "label": "Fruita C"
+      "label": "Fruita C",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "FA": {
       "id": "FA",
       "label": "Fruita A",
+      "aliases": [],
       "legacy_aliases": [
         "FALF",
         "F-ALF",
@@ -101,49 +125,67 @@
     "SC": {
       "id": "SC",
       "label": "Stagecoach",
+      "aliases": [],
+      "legacy_aliases": [],
       "allow_blank_treatment": false
     },
     "NHC": {
       "id": "NHC",
       "label": "North Hunt Creek",
+      "aliases": [],
+      "legacy_aliases": [],
       "allow_blank_treatment": false
     },
     "JY": {
       "id": "JY",
       "label": "Jay Whaley Ranch",
+      "aliases": [],
+      "legacy_aliases": [],
       "allow_blank_treatment": false
     },
     "YTWO": {
       "id": "YTWO",
-      "label": "Yampa 2"
+      "label": "Yampa 2",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "YJ": {
       "id": "YJ",
       "label": "Yellow Jacket",
-      "active": false
+      "aliases": [],
+      "legacy_aliases": []
     },
     "BK": {
       "id": "BK",
-      "label": "Lab Blank"
+      "label": "Lab Blank",
+      "aliases": [],
+      "legacy_aliases": []
     },
     "ASC": {
       "id": "ASC",
       "label": "ARDEC South - Conv",
+      "aliases": [],
+      "legacy_aliases": [],
       "active": false
     },
     "ASO": {
       "id": "ASO",
       "label": "ARDEC South - Org",
+      "aliases": [],
+      "legacy_aliases": [],
       "active": false
     },
     "NSC": {
       "id": "NSC",
       "label": "North Sand Creek",
+      "aliases": [],
+      "legacy_aliases": [],
       "active": false
     },
     "TY": {
       "id": "TY",
-      "label": "Knott Livestock"
+      "label": "Knott Livestock",
+      "allow_blank_treatment": true
     },
     "CPBE": {
       "id": "CPBE",
@@ -256,8 +298,7 @@
       "parent_location": "BT",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "River A",
-      "active": false
+      "r_label": "River A"
     },
     "RVB": {
       "id": "RVB",
@@ -265,8 +306,7 @@
       "parent_location": "BT",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "River B",
-      "active": false
+      "r_label": "River B"
     },
     "RVMID": {
       "id": "RVMID",
@@ -274,8 +314,7 @@
       "parent_location": "BT",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "River Middle",
-      "active": false
+      "r_label": "River Middle"
     },
     "PZE": {
       "id": "PZE",
@@ -283,8 +322,7 @@
       "parent_location": "BT",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Piezometer East",
-      "active": false
+      "r_label": "Piezometer East"
     },
     "PZW": {
       "id": "PZW",
@@ -292,8 +330,7 @@
       "parent_location": "BT",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Piezometer West",
-      "active": false
+      "r_label": "Piezometer West"
     },
     "TDR": {
       "id": "TDR",
@@ -301,8 +338,7 @@
       "parent_location": "BT",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Tile Drainage River",
-      "active": false
+      "r_label": "Tile Drainage River"
     },
     "TDL": {
       "id": "TDL",
@@ -310,8 +346,7 @@
       "parent_location": "BT",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Tile Drainage Lake",
-      "active": false
+      "r_label": "Tile Drainage Lake"
     },
     "CON": {
       "id": "CON",
@@ -319,8 +354,7 @@
       "parent_location": "HOL",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Confluence",
-      "active": false
+      "r_label": "Confluence"
     },
     "UP": {
       "id": "UP",
@@ -328,8 +362,7 @@
       "parent_location": "HOL",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Upstream of Bridge",
-      "active": false
+      "r_label": "Upstream of Bridge"
     },
     "DOWN": {
       "id": "DOWN",
@@ -337,8 +370,7 @@
       "parent_location": "HOL",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Downstream of Bridge",
-      "active": false
+      "r_label": "Downstream of Bridge"
     },
     "MID": {
       "id": "MID",
@@ -346,8 +378,7 @@
       "parent_location": "HOL",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Middle at Bridge",
-      "active": false
+      "r_label": "Middle at Bridge"
     },
     "PZN": {
       "id": "PZN",
@@ -413,8 +444,7 @@
       "legacy_aliases": [
         "FW1"
       ],
-      "r_label": "W1",
-      "active": false
+      "r_label": "W1"
     },
     "W2": {
       "id": "W2",
@@ -424,8 +454,7 @@
       "legacy_aliases": [
         "FW2"
       ],
-      "r_label": "W2",
-      "active": false
+      "r_label": "W2"
     },
     "T1": {
       "id": "T1",
@@ -433,8 +462,7 @@
       "parent_location": "COW",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Cowpea Treatment 1",
-      "active": false
+      "r_label": "Cowpea Treatment 1"
     },
     "T2": {
       "id": "T2",
@@ -442,8 +470,7 @@
       "parent_location": "COW",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Cowpea Treatment 2",
-      "active": false
+      "r_label": "Cowpea Treatment 2"
     },
     "T3": {
       "id": "T3",
@@ -451,8 +478,7 @@
       "parent_location": "COW",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Cowpea Treatment 3",
-      "active": false
+      "r_label": "Cowpea Treatment 3"
     },
     "T4": {
       "id": "T4",
@@ -460,8 +486,7 @@
       "parent_location": "COW",
       "aliases": [],
       "legacy_aliases": [],
-      "r_label": "Cowpea Treatment 4",
-      "active": false
+      "r_label": "Cowpea Treatment 4"
     },
     "C1": {
       "id": "C1",

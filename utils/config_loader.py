@@ -26,10 +26,6 @@ def is_catalog_entry_active(entry: dict) -> bool:
     return entry.get("active", True)
 
 
-def is_catalog_entry_legacy_only(entry: dict) -> bool:
-    return entry.get("legacy_only", False)
-
-
 def location_allows_blank_treatment(entry: dict) -> bool:
     return entry.get("allow_blank_treatment", True)
 
@@ -188,7 +184,7 @@ def validate_catalog_entry(
     legacy_aliases: list[str] | None = None,
     r_label: str = "",
     treatment_group: str = "",
-    legacy_only: bool = False,
+    active: bool = True,
 ) -> list[str]:
     errors: list[str] = []
     clean_id = entry_id.strip()
@@ -208,7 +204,7 @@ def validate_catalog_entry(
     if not clean_label:
         errors.append("Display label is required.")
 
-    if section_name == "treatments" and existing_key != "blank" and not legacy_only and not clean_parent_location:
+    if section_name == "treatments" and existing_key != "blank" and active and not clean_parent_location:
         errors.append("Parent location is required for treatments.")
 
     if clean_parent_location and clean_parent_location not in config["locations"]:
@@ -216,7 +212,7 @@ def validate_catalog_entry(
     elif (
         section_name == "treatments"
         and clean_parent_location
-        and not legacy_only
+        and active
         and not is_catalog_entry_active(config["locations"][clean_parent_location])
     ):
         errors.append("Active treatments must use an active parent location.")
@@ -279,7 +275,6 @@ def append_catalog_entry(
     legacy_aliases: list[str] | None = None,
     r_label: str = "",
     treatment_group: str = "",
-    legacy_only: bool = False,
     active: bool = True,
 ) -> str:
     section = config[section_name]
@@ -300,8 +295,6 @@ def append_catalog_entry(
             entry["r_label"] = r_label.strip()
         if treatment_group.strip():
             entry["treatment_group"] = treatment_group.strip()
-    if legacy_only:
-        entry["legacy_only"] = True
     if not active:
         entry["active"] = False
 
@@ -322,7 +315,6 @@ def update_catalog_entry(
     legacy_aliases: list[str] | None = None,
     r_label: str = "",
     treatment_group: str = "",
-    legacy_only: bool = False,
 ) -> None:
     updated_entry = dict(config[section_name][entry_key])
     updated_entry["id"] = entry_id.strip()
@@ -356,10 +348,7 @@ def update_catalog_entry(
         else:
             updated_entry.pop("treatment_group", None)
 
-    if legacy_only:
-        updated_entry["legacy_only"] = True
-    else:
-        updated_entry.pop("legacy_only", None)
+    updated_entry.pop("legacy_only", None)
 
     if active:
         updated_entry.pop("active", None)

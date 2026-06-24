@@ -717,38 +717,32 @@
     "IN2": {
       "id": "IN2",
       "label": "ARDEC Inflow 2 South",
-      "parent_location": "CPBE",
-      "active": false
+      "parent_location": "CPBE"
     },
     "BEE": {
       "id": "BEE",
       "label": "ARDEC Bee Pivot Retention Pond",
-      "parent_location": "CPBE",
-      "active": false
+      "parent_location": "CPBE"
     },
     "CP2": {
       "id": "CP2",
       "label": "ARDEC Boxelder Downstream WWTP",
-      "parent_location": "CPBE",
-      "active": false
+      "parent_location": "CPBE"
     },
     "CP1": {
       "id": "CP1",
       "label": "ARDEC County Rd 58 in Parshall flume",
-      "parent_location": "CPBE",
-      "active": false
+      "parent_location": "CPBE"
     },
     "CP5": {
       "id": "CP5",
       "label": "ARDEC Boxelder Confluence at CR 58",
-      "parent_location": "CPBE",
-      "active": false
+      "parent_location": "CPBE"
     },
     "CP4": {
       "id": "CP4",
       "label": "ARDEC Canal Near 6400 Pivot South of CR 58",
-      "parent_location": "CPBE",
-      "active": false
+      "parent_location": "CPBE"
     }
   },
   "event_types": {

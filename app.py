@@ -559,6 +559,94 @@ def validate_uploaded_catalog(config_data: object) -> list[str]:
     return errors
 
 
+def render_config_version_selector() -> None:
+    with st.expander("Choose config version"):
+        st.caption(
+            "Choose the catalog for this browser session. The Label Builder, Label Editor, and R dictionary export all use the active session config."
+        )
+        repo_configs = repository_config_paths()
+        selected_repo_config = st.selectbox(
+            "Repository config",
+            options=list(repo_configs),
+            format_func=repository_config_label,
+            key="repository_config_selection",
+        )
+        if st.button("Use selected repository config", key="use_repository_config"):
+            if selected_repo_config == CONFIG_PATH.name:
+                use_default_config()
+                st.rerun()
+            try:
+                repository_config = load_config(repo_configs[selected_repo_config])
+            except Exception as exc:
+                st.error(f"Could not read `{selected_repo_config}`: {exc}")
+            else:
+                repository_config_errors = validate_uploaded_catalog(repository_config)
+                if repository_config_errors:
+                    for error in repository_config_errors:
+                        st.error(error)
+                else:
+                    use_session_config(
+                        repository_config,
+                        repository_config_source_label(
+                            selected_repo_config,
+                            repo_configs[selected_repo_config],
+                        ),
+                    )
+                    st.rerun()
+
+        st.divider()
+        st.caption("Upload a config when the needed version is not available in the repository.")
+        custom_config_file = st.file_uploader(
+            "Upload custom config.json",
+            type=["json"],
+            key="custom_config_upload",
+        )
+        if st.session_state.get("custom_config_source"):
+            st.info(f"Active session config: {st.session_state.custom_config_source}")
+        else:
+            st.success(f"Active session config: {active_config_source_label()}")
+        custom_upload_col, local_config_col = st.columns(2)
+        use_custom_config = custom_upload_col.button(
+            "Use uploaded config",
+            type="primary",
+            key="use_custom_config",
+        )
+        use_saved_config = local_config_col.button(
+            "Use current default",
+            key="use_saved_config",
+            disabled="custom_config" not in st.session_state,
+        )
+
+        if use_custom_config:
+            if custom_config_file is None:
+                st.warning("Upload a config JSON file first.")
+            else:
+                try:
+                    custom_config = json.loads(custom_config_file.getvalue().decode("utf-8"))
+                except Exception as exc:
+                    st.error(f"Could not read uploaded JSON: {exc}")
+                else:
+                    custom_config_errors = validate_uploaded_catalog(custom_config)
+                    if custom_config_errors:
+                        for error in custom_config_errors:
+                            st.error(error)
+                    else:
+                        uploaded_timestamp = parse_config_export_timestamp(custom_config_file.name)
+                        if uploaded_timestamp is None:
+                            source = f"Uploaded file `{custom_config_file.name}`"
+                        else:
+                            source = (
+                                f"Uploaded file `{custom_config_file.name}` from "
+                                f"{format_config_timestamp(uploaded_timestamp)}"
+                            )
+                        use_session_config(custom_config, source)
+                        st.rerun()
+
+        if use_saved_config:
+            use_default_config()
+            st.rerun()
+
+
 def apply_treatment_row(target_config: dict, row: dict[str, object]) -> None:
     aliases = parse_list_field("" if pd.isna(row["Aliases"]) else str(row["Aliases"]))
     legacy_aliases = parse_list_field(
@@ -1386,93 +1474,6 @@ with st.sidebar:
         key="page",
     )
     st.divider()
-    with st.expander("Choose config version"):
-        st.caption(
-            "Choose the catalog for this browser session. The Label Builder, Label Editor, and R dictionary export all use the active session config."
-        )
-        repo_configs = repository_config_paths()
-        selected_repo_config = st.selectbox(
-            "Repository config",
-            options=list(repo_configs),
-            format_func=repository_config_label,
-            key="repository_config_selection",
-        )
-        if st.button("Use selected repository config", key="use_repository_config"):
-            if selected_repo_config == CONFIG_PATH.name:
-                use_default_config()
-                st.rerun()
-            try:
-                repository_config = load_config(repo_configs[selected_repo_config])
-            except Exception as exc:
-                st.error(f"Could not read `{selected_repo_config}`: {exc}")
-            else:
-                repository_config_errors = validate_uploaded_catalog(repository_config)
-                if repository_config_errors:
-                    for error in repository_config_errors:
-                        st.error(error)
-                    else:
-                        use_session_config(
-                            repository_config,
-                            repository_config_source_label(
-                                selected_repo_config,
-                                repo_configs[selected_repo_config],
-                            ),
-                        )
-                        st.rerun()
-
-        st.divider()
-        st.caption("Upload a config when the needed version is not available in the repository.")
-        custom_config_file = st.file_uploader(
-            "Upload custom config.json",
-            type=["json"],
-            key="custom_config_upload",
-        )
-        if st.session_state.get("custom_config_source"):
-            st.info(f"Active session config: {st.session_state.custom_config_source}")
-        else:
-            st.success(f"Active session config: {active_config_source_label()}")
-        custom_upload_col, local_config_col = st.columns(2)
-        use_custom_config = custom_upload_col.button(
-            "Use uploaded config",
-            type="primary",
-            key="use_custom_config",
-        )
-        use_saved_config = local_config_col.button(
-            "Use current default",
-            key="use_saved_config",
-            disabled="custom_config" not in st.session_state,
-        )
-
-        if use_custom_config:
-            if custom_config_file is None:
-                st.warning("Upload a config JSON file first.")
-            else:
-                try:
-                    custom_config = json.loads(custom_config_file.getvalue().decode("utf-8"))
-                except Exception as exc:
-                    st.error(f"Could not read uploaded JSON: {exc}")
-                else:
-                    custom_config_errors = validate_uploaded_catalog(custom_config)
-                    if custom_config_errors:
-                        for error in custom_config_errors:
-                            st.error(error)
-                    else:
-                        uploaded_timestamp = parse_config_export_timestamp(custom_config_file.name)
-                        if uploaded_timestamp is None:
-                            source = f"Uploaded file `{custom_config_file.name}`"
-                        else:
-                            source = (
-                                f"Uploaded file `{custom_config_file.name}` from "
-                                f"{format_config_timestamp(uploaded_timestamp)}"
-                            )
-                        use_session_config(custom_config, source)
-                        st.rerun()
-
-        if use_saved_config:
-            use_default_config()
-            st.rerun()
-
-    st.divider()
     collection_date = None
     include_lab_blank = False
     blank_context = None
@@ -1500,6 +1501,9 @@ with st.sidebar:
         st.divider()
         st.write("Current batch")
         st.metric("Sample groups", len(st.session_state.sample_plan["groups"]))
+        st.divider()
+
+    render_config_version_selector()
 
 if page == "Guide":
     render_guide()
